@@ -1,478 +1,381 @@
 # Refactoring Playbook
 
-Padroes concretos de transformacao para cada anti-pattern. Cada padrao mostra codigo antes e depois para Python e Node.js quando aplicavel.
+Padroes concretos de transformacao para cada anti-pattern. Cada padrao descreve o conceito da mudanca com exemplos ilustrativos antes/depois.
 
 ---
 
 ## 1. SQL Injection → Parameterized Queries
 
-### Python — Antes
-```python
-cursor.execute("SELECT * FROM produtos WHERE id = " + str(id))
-cursor.execute("INSERT INTO usuarios (nome, email) VALUES ('" + nome + "', '" + email + "')")
-query = "SELECT * FROM produtos WHERE 1=1"
-query += " AND (nome LIKE '%" + termo + "%' OR descricao LIKE '%" + termo + "%')"
-query += " AND categoria = '" + categoria + "'"
-cursor.execute(query)
+**Conceito:** Substituir string concatenation por placeholders com parametros separados.
+
+**Antes:**
+```
+query = "SELECT * FROM users WHERE id = " + user_input
+execute(query)
+
+query = "INSERT INTO users (name) VALUES ('" + name + "')"
+execute(query)
 ```
 
-### Python — Depois
-```python
-cursor.execute("SELECT * FROM produtos WHERE id = ?", (id,))
-cursor.execute("INSERT INTO usuarios (nome, email) VALUES (?, ?)", (nome, email))
+**Depois:**
+```
+query = "SELECT * FROM users WHERE id = ?"
+execute(query, [user_input])
 
-query = "SELECT * FROM produtos WHERE 1=1"
+query = "INSERT INTO users (name) VALUES (?)"
+execute(query, [name])
+```
+
+**Para queries dinamicas com filtros opcionais:**
+```
+// Antes: concatenando filtros
+query = "SELECT * FROM products WHERE 1=1"
+if term:
+    query += " AND name LIKE '%" + term + "%'"
+if category:
+    query += " AND category = '" + category + "'"
+
+// Depois: acumulando parametros
+query = "SELECT * FROM products WHERE 1=1"
 params = []
-if termo:
-    query += " AND (nome LIKE ? OR descricao LIKE ?)"
-    params.extend([f"%{termo}%", f"%{termo}%"])
-if categoria:
-    query += " AND categoria = ?"
-    params.append(categoria)
-cursor.execute(query, params)
-```
-
-### Node.js — Antes
-```javascript
-db.run(`DELETE FROM users WHERE id = ${id}`);
-```
-
-### Node.js — Depois
-```javascript
-db.run("DELETE FROM users WHERE id = ?", [id]);
+if term:
+    query += " AND name LIKE ?"
+    params.add("%" + term + "%")
+if category:
+    query += " AND category = ?"
+    params.add(category)
+execute(query, params)
 ```
 
 ---
 
 ## 2. Hardcoded Credentials → Environment Variables
 
-### Python — Antes
-```python
-app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
-email_password = 'senha123'
+**Conceito:** Mover todos os valores sensiveis para variaveis de ambiente, acessadas via modulo de configuracao.
+
+**Antes:**
+```
+SECRET_KEY = "minha-chave-super-secreta-123"
+DB_PASSWORD = "senha_do_banco"
+SMTP_PASSWORD = "senha123"
+PAYMENT_KEY = "pk_live_1234567890abcdef"
 ```
 
-### Python — Depois (config/settings.py)
-```python
-import os
-
-SECRET_KEY = os.environ.get("SECRET_KEY", "dev-key-change-in-prod")
-SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "sqlite:///app.db")
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-DEBUG = os.environ.get("FLASK_DEBUG", "False").lower() == "true"
+**Depois (modulo de configuracao):**
+```
+// Modulo config:
+SECRET_KEY = env("SECRET_KEY")                    // obrigatorio, falha se nao definido
+DB_URI = env("DATABASE_URL", default="local.db")  // com default para dev
+SMTP_PASSWORD = env("SMTP_PASSWORD", default="")  // opcional
+PAYMENT_KEY = env("PAYMENT_GATEWAY_KEY")
 ```
 
-### Node.js — Antes
-```javascript
-const config = {
-    dbPass: "senha_super_secreta_prod_123",
-    paymentGatewayKey: "pk_live_1234567890abcdef",
-    port: 3000
-};
-```
-
-### Node.js — Depois (config/settings.js)
-```javascript
-require('dotenv').config();
-
-module.exports = {
-    dbPath: process.env.DB_PATH || './database.db',
-    paymentGatewayKey: process.env.PAYMENT_GATEWAY_KEY,
-    port: process.env.PORT || 3000
-};
-```
+**Criar arquivo de exemplo** listando todas as variaveis necessarias sem seus valores reais.
 
 ---
 
 ## 3. God Class → Split by Domain
 
-### Antes (um arquivo models.py com 300+ linhas para 4 dominios)
-```python
-# models.py — tudo misturado
-def get_todos_produtos(): ...
-def get_produto_por_id(id): ...
-def criar_usuario(nome, email, senha): ...
-def criar_pedido(usuario_id, itens): ...
-def relatorio_vendas(): ...
+**Conceito:** Dividir arquivo que acumula multiplos dominios em um modulo por dominio.
+
+**Antes (um arquivo com tudo):**
+```
+// data_access.py — 300+ linhas
+function get_all_products(): ...
+function get_product_by_id(id): ...
+function create_user(name, email, password): ...
+function create_order(user_id, items): ...
+function get_sales_report(): ...
 ```
 
-### Depois (um model por dominio)
-```python
-# models/produto_model.py
-class ProdutoModel:
-    @staticmethod
-    def get_all(): ...
-
-    @staticmethod
-    def get_by_id(id): ...
-
-    @staticmethod
-    def create(nome, descricao, preco, estoque, categoria): ...
-
-    @staticmethod
-    def search(termo, categoria=None, preco_min=None, preco_max=None): ...
-
-# models/usuario_model.py
-class UsuarioModel:
-    @staticmethod
-    def get_all(): ...
-
-    @staticmethod
-    def get_by_id(id): ...
-
-    @staticmethod
-    def create(nome, email, senha): ...
-
-    @staticmethod
-    def authenticate(email, senha): ...
-
-# models/pedido_model.py
-class PedidoModel:
-    @staticmethod
-    def create(usuario_id, itens): ...
-
-    @staticmethod
-    def get_by_usuario(usuario_id): ...
-
-    @staticmethod
-    def get_all(): ...
-
-    @staticmethod
-    def update_status(pedido_id, status): ...
+**Depois (um modulo por dominio):**
 ```
+// models/product_model
+class ProductModel:
+    function get_all(): ...
+    function get_by_id(id): ...
+    function create(data): ...
+    function search(filters): ...
 
-### Node.js — Antes (AppManager faz tudo)
-```javascript
-class AppManager {
-    initDb() { /* CREATE TABLE + seeds */ }
-    setupRoutes(app) {
-        // checkout + financial report + delete user
-    }
-}
-```
+// models/user_model
+class UserModel:
+    function get_all(): ...
+    function get_by_id(id): ...
+    function create(data): ...
+    function authenticate(email, password): ...
 
-### Node.js — Depois (modulos separados)
-```javascript
-// models/userModel.js
-// models/courseModel.js
-// models/enrollmentModel.js
-// controllers/checkoutController.js
-// controllers/reportController.js
-// routes/checkoutRoutes.js
-// routes/reportRoutes.js
-// database.js (init + seed)
+// models/order_model
+class OrderModel:
+    function create(user_id, items): ...
+    function get_by_user(user_id): ...
+    function get_all(): ...
+    function update_status(id, status): ...
 ```
 
 ---
 
 ## 4. Business Logic in Routes → Extract to Controller/Service
 
-### Python — Antes
-```python
-@app.route('/pedidos', methods=['POST'])
-def criar_pedido():
-    dados = request.get_json()
-    resultado = models.criar_pedido(usuario_id, itens)
-    print("ENVIANDO EMAIL...")
-    print("ENVIANDO SMS...")
-    return jsonify(resultado), 201
+**Conceito:** Route apenas extrai dados do request e chama controller. Controller orquestra a logica e chama models/services.
+
+**Antes (tudo no handler):**
+```
+route POST /orders:
+    data = request.body
+    // validacao inline
+    if not data.user_id: return error("user_id required")
+    // chamada ao banco direta
+    result = OrderModel.create(data.user_id, data.items)
+    // notificacao inline
+    send_email("New order " + result.id)
+    send_sms("Order received")
+    return response(result)
 ```
 
-### Python — Depois — Route
-```python
-# routes/pedido_routes.py
-pedido_bp = Blueprint('pedidos', __name__)
-
-@pedido_bp.route('/pedidos', methods=['POST'])
-def criar_pedido():
-    dados = request.get_json()
-    resultado, status = PedidoController.criar_pedido(dados)
-    return jsonify(resultado), status
+**Depois — Route:**
+```
+route POST /orders:
+    data = request.body
+    result, status = OrderController.create(data)
+    return response(result, status)
 ```
 
-### Python — Depois — Controller
-```python
-# controllers/pedido_controller.py
-class PedidoController:
-    @staticmethod
-    def criar_pedido(dados):
-        usuario_id = dados.get("usuario_id")
-        itens = dados.get("itens", [])
-        if not usuario_id or not itens:
-            return {"erro": "Dados invalidos"}, 400
-        resultado = PedidoModel.create(usuario_id, itens)
-        if "erro" in resultado:
-            return {"erro": resultado["erro"]}, 400
-        NotificationService.notify_new_order(resultado["pedido_id"], usuario_id)
-        return {"dados": resultado, "sucesso": True, "mensagem": "Pedido criado"}, 201
+**Depois — Controller:**
+```
+class OrderController:
+    function create(data):
+        user_id = data.user_id
+        items = data.items
+        // validacao de negocio
+        if not user_id or not items:
+            return {error: "Invalid data"}, 400
+        // delega ao model
+        result = OrderModel.create(user_id, items)
+        // delega ao service
+        NotificationService.notify_new_order(result.id, user_id)
+        return {data: result, success: true}, 201
 ```
 
 ---
 
-## 5. Password/Secret Exposure → Filter in Serialization
+## 5. Sensitive Data Exposure → Filter in Serialization
 
-### Antes
-```python
-def to_dict(self):
+**Conceito:** Garantir que serializacao de modelos nunca inclua campos sensiveis.
+
+**Antes:**
+```
+function to_dict():
     return {
-        'id': self.id,
-        'name': self.name,
-        'email': self.email,
-        'password': self.password,   # EXPÕE A SENHA!
+        id: self.id,
+        name: self.name,
+        email: self.email,
+        password: self.password,    // EXPÕE SENHA!
+        role: self.role
     }
 ```
 
-### Depois
-```python
-def to_dict(self):
+**Depois:**
+```
+function to_dict():
     return {
-        'id': self.id,
-        'name': self.name,
-        'email': self.email,
-        'role': self.role,
-        'active': self.active,
-        'created_at': str(self.created_at),
+        id: self.id,
+        name: self.name,
+        email: self.email,
+        role: self.role,
+        active: self.active,
+        created_at: self.created_at
     }
+    // password removido da serializacao publica
 ```
 
-Tambem remover secret_key e debug do health check:
-```python
-# Antes
-return jsonify({"secret_key": "minha-chave...", "debug": True})
-# Depois
-return jsonify({"status": "ok", "database": "connected"})
+**Tambem aplicar a health checks e endpoints de debug:**
+```
+// Antes: health check expondo secrets
+return {secret_key: config.SECRET_KEY, db_path: config.DB_URI}
+
+// Depois: health check sem dados sensiveis
+return {status: "ok", database: "connected"}
 ```
 
 ---
 
 ## 6. Weak Cryptography → Secure Hashing
 
-### Python — Antes
-```python
-import hashlib
-self.password = hashlib.md5(pwd.encode()).hexdigest()
+**Conceito:** Substituir algoritmos fracos ou implementacoes caseiras por bibliotecas criptograficas reconhecidas da stack.
+
+**Antes:**
+```
+// Hash inseguro
+hash = md5(password)
+// ou funcao caseira
+hash = custom_encode(password)
 ```
 
-### Python — Depois
-```python
-from werkzeug.security import generate_password_hash, check_password_hash
-
-def set_password(self, pwd):
-    self.password = generate_password_hash(pwd)
-
-def check_password(self, pwd):
-    return check_password_hash(self.password, pwd)
+**Depois:**
+```
+// Usar biblioteca de hashing segura da stack
+// (bcrypt, argon2, werkzeug.security, etc.)
+hash = secure_hash(password)   // automaticamente gera salt
+verify = secure_verify(password, hash)
 ```
 
-### Node.js — Antes
-```javascript
-function badCrypto(pwd) {
-    let hash = "";
-    for(let i = 0; i < 10000; i++) {
-        hash += Buffer.from(pwd).toString('base64').substring(0, 2);
-    }
-    return hash.substring(0, 10);
-}
-```
-
-### Node.js — Depois
-```javascript
-const bcrypt = require('bcrypt');
-const SALT_ROUNDS = 10;
-
-async function hashPassword(pwd) {
-    return bcrypt.hash(pwd, SALT_ROUNDS);
-}
-
-async function verifyPassword(pwd, hash) {
-    return bcrypt.compare(pwd, hash);
-}
-```
+**A biblioteca especifica depende da stack detectada** — o importante e que:
+- Usa algoritmo projetado para senhas (bcrypt, argon2, scrypt)
+- Gera salt automaticamente
+- Nao e reversivel
 
 ---
 
-## 7. Callback Hell → Async/Await
+## 7. Callback/Promise Nesting → Linear Async Flow
 
-### Node.js — Antes
-```javascript
-this.db.get("SELECT * FROM courses WHERE id = ?", [cid], (err, course) => {
-    this.db.get("SELECT id FROM users WHERE email = ?", [e], (err, user) => {
-        this.db.run("INSERT INTO enrollments ...", [...], function(err) {
-            self.db.run("INSERT INTO payments ...", [...], function(err) {
-                self.db.run("INSERT INTO audit_logs ...", [...], (err) => {
-                    res.status(200).json({ msg: "Sucesso" });
-                });
-            });
-        });
-    });
-});
+**Conceito:** Transformar cadeias profundas de callbacks/promises em fluxo linear.
+
+**Antes (aninhamento profundo):**
+```
+async_op1(params, (result1) ->
+    async_op2(result1, (result2) ->
+        async_op3(result2, (result3) ->
+            async_op4(result3, (result4) ->
+                return response(result4)
+            )
+        )
+    )
+)
 ```
 
-### Node.js — Depois
-```javascript
-// database.js — promisify
-const dbAsync = {
-    get: (sql, params) => new Promise((resolve, reject) => {
-        db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
-    }),
-    all: (sql, params) => new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
-    }),
-    run: (sql, params) => new Promise((resolve, reject) => {
-        db.run(sql, params, function(err) { err ? reject(err) : resolve(this) });
-    })
-};
-
-// controller/checkoutController.js
-async function checkout(req, res) {
-    const { usr, eml, pwd, c_id, card } = req.body;
-    const course = await dbAsync.get("SELECT * FROM courses WHERE id = ? AND active = 1", [c_id]);
-    if (!course) return res.status(404).json({ error: "Curso nao encontrado" });
-
-    let user = await dbAsync.get("SELECT id FROM users WHERE email = ?", [eml]);
-    if (!user) {
-        const hash = await hashPassword(pwd || "123456");
-        const result = await dbAsync.run("INSERT INTO users (name, email, pass) VALUES (?, ?, ?)", [usr, eml, hash]);
-        user = { id: result.lastID };
-    }
-
-    const enrResult = await dbAsync.run("INSERT INTO enrollments (user_id, course_id) VALUES (?, ?)", [user.id, c_id]);
-    await dbAsync.run("INSERT INTO payments (enrollment_id, amount, status) VALUES (?, ?, ?)", [enrResult.lastID, course.price, "PAID"]);
-    await dbAsync.run("INSERT INTO audit_logs (action, created_at) VALUES (?, datetime('now'))", [`Checkout curso ${c_id} por ${user.id}`]);
-
-    res.status(200).json({ msg: "Sucesso", enrollment_id: enrResult.lastID });
-}
+**Depois (fluxo linear):**
 ```
+// Promisify operacoes assincronas se necessario
+result1 = await async_op1(params)
+result2 = await async_op2(result1)
+result3 = await async_op3(result2)
+result4 = await async_op4(result3)
+return response(result4)
+```
+
+**Para linguagens sem async/await nativo**, encadear promises ou usar o padrao equivalente da stack.
 
 ---
 
-## 8. N+1 Queries → JOINs / Eager Loading
+## 8. N+1 Queries → JOINs / Batch Loading
 
-### Python — Antes (3 queries por pedido)
-```python
-for row in rows:
-    cursor2.execute("SELECT * FROM itens_pedido WHERE pedido_id = " + str(row["id"]))
-    itens = cursor2.fetchall()
-    for item in itens:
-        cursor3.execute("SELECT nome FROM produtos WHERE id = " + str(item["produto_id"]))
-        prod = cursor3.fetchone()
+**Conceito:** Substituir queries dentro de loops por uma unica query otimizada com JOIN ou batch loading.
+
+**Antes (1 + N + N queries):**
+```
+orders = query("SELECT * FROM orders")
+for order in orders:
+    items = query("SELECT * FROM order_items WHERE order_id = " + order.id)
+    for item in items:
+        product = query("SELECT name FROM products WHERE id = " + item.product_id)
 ```
 
-### Python — Depois (1 query com JOIN)
-```python
-cursor.execute("""
-    SELECT p.id, p.usuario_id, p.status, p.total, p.criado_em,
-           ip.produto_id, ip.quantidade, ip.preco_unitario,
-           pr.nome as produto_nome
-    FROM pedidos p
-    LEFT JOIN itens_pedido ip ON ip.pedido_id = p.id
-    LEFT JOIN produtos pr ON pr.id = ip.produto_id
-    WHERE p.usuario_id = ?
-    ORDER BY p.id, ip.id
-""", (usuario_id,))
+**Depois (1 query com JOIN):**
+```
+results = query("""
+    SELECT o.*, oi.product_id, oi.quantity, oi.price, p.name as product_name
+    FROM orders o
+    LEFT JOIN order_items oi ON oi.order_id = o.id
+    LEFT JOIN products p ON p.id = oi.product_id
+    WHERE o.user_id = ?
+""", [user_id])
+// Agrupar resultados por order no codigo
 ```
 
-### SQLAlchemy — Depois
-```python
-orders = Order.query.options(
-    db.joinedload(Order.items).joinedload(OrderItem.product)
-).filter_by(user_id=user_id).all()
+**Para ORMs**, usar eager loading:
+```
+orders = Order.query.include("items.product").filter(user_id)
 ```
 
 ---
 
 ## 9. Global Mutable State → Dependency Injection
 
-### Python — Antes
-```python
-db_connection = None  # global mutavel
+**Conceito:** Eliminar estado global mutavel, passando dependencias via parametros ou construtores.
 
-def get_db():
-    global db_connection
-    if db_connection is None:
-        db_connection = sqlite3.connect(...)
+**Antes (estado global):**
+```
+// Modulo exportando estado mutavel
+global connection = null
+global cache = {}
+global counter = 0
+
+function get_connection():
+    if connection == null:
+        connection = create_connection(...)
+    return connection
 ```
 
-### Python — Depois
-```python
-# database.py — factory
-def create_connection(db_path):
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+**Depois (injecao):**
+```
+// Factory function — cada chamada cria instancia independente
+function create_connection(config):
+    conn = connect(config.db_uri)
+    conn.configure(config.options)
     return conn
 
-# Em config ou app.py
-from config.settings import SQLALCHEMY_DATABASE_URI
-db = create_connection(SQLALCHEMY_DATABASE_URI)
-```
-
-### Node.js — Antes
-```javascript
-let globalCache = {};
-let totalRevenue = 0;
-```
-
-### Node.js — Depois
-```javascript
-class CacheService {
-    constructor() { this.cache = new Map(); }
-    set(key, value) { this.cache.set(key, value); }
-    get(key) { return this.cache.get(key); }
-}
-// Injetar via construtor nos controllers
+// No entry point, criar e injetar
+conn = create_connection(app_config)
+productModel = new ProductModel(conn)
+productController = new ProductController(productModel)
 ```
 
 ---
 
 ## 10. Duplicated Code → Extract Shared Functions
 
-### Antes (serializacao repetida)
-```python
-result.append({
-    "id": row["id"],
-    "nome": row["nome"],
-    "preco": row["preco"],
-    # ... 5+ campos copiados/colados
-})
+**Conceito:** Identificar logica repetida e extrair para funcoes/metodos compartilhados.
+
+**Antes (validacao duplicada):**
+```
+// Em criar:
+if not name: return error("Name required")
+if not email: return error("Email required")
+if len(name) < 3: return error("Name too short")
+
+// Em atualizar (copia):
+if not name: return error("Name required")
+if not email: return error("Email required")
+if len(name) < 3: return error("Name too short")
 ```
 
-### Depois
-```python
-# No model
-def to_dict(self):
-    return {
-        "id": self.id,
-        "nome": self.nome,
-        "preco": self.preco,
-    }
+**Depois (funcao compartilhada):**
+```
+function validate_user(data):
+    if not data.name: return error("Name required")
+    if not data.email: return error("Email required")
+    if len(data.name) < 3: return error("Name too short")
+    return null
 
-# Na route
-result = [item.to_dict() for item in items]
+// Em criar:
+validation = validate_user(data)
+if validation: return validation
+
+// Em atualizar:
+validation = validate_user(data)
+if validation: return validation
 ```
 
-### Antes (logica de overdue copiada 3x)
-```python
-# Em 3 arquivos diferentes:
-if t.due_date:
-    if t.due_date < datetime.utcnow():
-        if t.status != 'done' and t.status != 'cancelled':
-            task_data['overdue'] = True
+**Antes (logica de verificacao copiada em N arquivos):**
+```
+// Arquivo 1, 2 e 3 — mesma logica:
+if entity.due_date:
+    if entity.due_date < now():
+        if entity.status != "done" and entity.status != "cancelled":
+            is_overdue = true
 ```
 
-### Depois
-```python
-# No model Task
-def is_overdue(self):
-    if self.due_date:
-        if self.due_date < datetime.now(timezone.utc):
-            if self.status != 'done' and self.status != 'cancelled':
-                return True
-    return False
+**Depois (metodo no model):**
+```
+// No model:
+function is_overdue():
+    if not self.due_date: return false
+    if self.due_date >= now(): return false
+    if self.status == "done" or self.status == "cancelled": return false
+    return true
 
-# Nas routes
-task_data['overdue'] = task.is_overdue()
+// Em qualquer lugar:
+result.overdue = entity.is_overdue()
 ```
 
 ---
@@ -486,3 +389,4 @@ task_data['overdue'] = task.is_overdue()
 5. Cada arquivo tem uma responsabilidade clara?
 6. A aplicacao inicia sem erros?
 7. O entry point e limpo (composition root)?
+8. Dados sensiveis nao sao expostos em respostas de API?

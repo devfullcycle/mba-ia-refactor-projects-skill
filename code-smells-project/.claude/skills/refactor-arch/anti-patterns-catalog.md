@@ -1,6 +1,6 @@
 # Anti-Patterns Catalog
 
-Cada anti-pattern contem: nome, severidade, sinais de deteccao e exemplos.
+Cada anti-pattern contem nome, severidade, sinais de deteccao e descricao conceitual.
 
 ---
 
@@ -8,118 +8,133 @@ Cada anti-pattern contem: nome, severidade, sinais de deteccao e exemplos.
 
 ### 1. SQL Injection
 
+**Conceito:** Queries SQL construidas com string concatenation ou interpolacao usando input do usuario.
+
 **Sinais de deteccao:**
-- String concatenation ou f-strings em queries SQL
-- `+ str(id)`, `+ nome`, `f"...{var}..."` dentro de `cursor.execute()` ou `db.run()`
-- Query building dinamico com input do usuario sem parametros
+- Concatenacao de variaveis dentro de strings SQL
+- Interpolacao de strings (f-strings, template literals) em queries
+- Query building dinamico com input do usuario sem uso de parametros preparados
+- Qualquer lugar onde input externo e injetado diretamente em uma string SQL
 
-**Python:**
-```python
-cursor.execute("SELECT * FROM users WHERE id = " + str(id))
-cursor.execute(f"SELECT * FROM users WHERE email = '{email}'")
-cursor.execute("INSERT INTO t (nome) VALUES ('" + nome + "')")
-```
+**Impacto:** Permite que atacantes executem SQL arbitrario no banco — leitura, modificacao ou destruicao de dados.
 
-**Node.js:**
-```javascript
-db.run(`DELETE FROM users WHERE id = ${id}`)
-db.all(`SELECT * FROM courses WHERE title LIKE '%${term}%'`)
-```
+---
 
 ### 2. Hardcoded Credentials / Secrets
 
-**Sinais de deteccao:**
-- `SECRET_KEY = "..."` hardcoded em source
-- Senhas de banco, chaves de API, credenciais SMTP no codigo
-- Chaves de payment gateway em config objects
-- `"password"`, `"senha"`, `"secret"`, `"key"`, `"token"` atribuidos a string literals
+**Conceito:** Senhas, chaves de API, tokens ou credenciais escritas diretamente no codigo-fonte.
 
-```python
-app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"
-email_password = 'senha123'
-SMTP_USER = 'admin@gmail.com'
-```
-```javascript
-dbPass: "senha_super_secreta_prod_123"
-paymentGatewayKey: "pk_live_1234567890abcdef"
-```
+**Sinais de deteccao:**
+- Variaveis de config recebendo strings literais que parecem credenciais
+- Strings de conexao de banco com senha embutida
+- Chaves de gateway de pagamento, SMTP, ou servicos externos no codigo
+- SECRET_KEY, API_KEY, PASSWORD ou similares atribuidos a valores fixos
+- Senhas de usuarios seed/fixture escritas em plaintext
+
+**Impacto:** Qualquer pessoa com acesso ao codigo tem acesso a todos os sistemas integrados. Vazamento no repositorio expoe credenciais de producao.
+
+---
 
 ### 3. God Class / God File
 
-**Sinais de deteccao:**
-- Arquivo com 200+ linhas lidando com multiplos dominios
-- Um arquivo contendo DB access, business logic e routing para 3+ entidades
-- Funcoes para modelos diferentes (users, products, orders) no mesmo arquivo
-- Classe que faz init DB + define routes + business logic + data access
-
-### 4. Unauthenticated Admin Endpoints / SQL Execution
+**Conceito:** Um unico arquivo ou classe que acumula multiplas responsabilidades e dominios.
 
 **Sinais de deteccao:**
-- Rotas `/admin/*` sem middleware de autenticacao
-- Endpoints aceitando SQL cru do request body (`req.body.sql`, `dados.get("sql")`)
-- Endpoints de reset/delete de banco sem auth
-- Qualquer endpoint que execute operacoes privilegiadas sem verificar identidade
+- Arquivo com mais de 200 linhas tratando 3 ou mais entidades/domínios diferentes
+- Uma classe que inicializa banco, define rotas, contem logica de negocio e acessa dados
+- Funcoes para entidades distintas (ex: usuarios, produtos, pedidos) no mesmo arquivo
+- Impossibilidade de testar uma funcionalidade sem carregar tudo
+
+**Impacto:** Impossivel testar em isolamento. Mudancas em um dominio podem quebrar outro. Viola o Single Responsibility Principle.
+
+---
+
+### 4. Unauthenticated Sensitive Endpoints
+
+**Conceito:** Endpoints que executam operacoes privilegiadas sem verificar a identidade do usuario.
+
+**Sinais de deteccao:**
+- Rotas administrativas (reset de banco, execucao de queries) sem middleware de autenticacao
+- Endpoints que aceitam e executam comandos arbitrarios (SQL, shell) do corpo da requisicao
+- Operacoes destrutivas (DELETE, DROP, reset) sem verificacao de autorizacao
+
+**Impacto:** Qualquer usuario anonimo pode executar operacoes administrativas, destruir dados ou acessar informacoes sensíveis.
+
+---
 
 ### 5. Weak Cryptography
 
-**Sinais de deteccao:**
-- `hashlib.md5()` para hashing de senhas
-- `hashlib.sha1()` para senhas
-- Funcoes crypto customizadas (loops de base64, XOR caseiro)
-- Senhas armazenadas em plaintext
-- Ausencia de salt no hash
+**Conceito:** Uso de algoritmos criptograficos inseguros ou implementacoes caseiras para proteger dados sensíveis.
 
-```python
-hashlib.md5(pwd.encode()).hexdigest()
-```
-```javascript
-function badCrypto(pwd) {
-    let hash = "";
-    for(let i = 0; i < 10000; i++) {
-        hash += Buffer.from(pwd).toString('base64').substring(0, 2);
-    }
-    return hash.substring(0, 10);
-}
-```
+**Sinais de deteccao:**
+- Hashing de senhas com algoritmos quebrados (MD5, SHA1)
+- Funcoes de criptografia customizadas (loops de encoding, XOR caseiro)
+- Senhas armazenadas em plaintext
+- Hashes sem salt
+- Qualquer funcao que nao use uma biblioteca criptografica reconhecida para senhas
+
+**Impacto:** Senhas e dados sensíveis podem ser recuperados facilmente. Database leak expoe todos os usuarios.
 
 ---
 
 ## HIGH
 
-### 6. Business Logic in Routes / Controllers
+### 6. Business Logic in Route/View Layer
+
+**Conceito:** Logica de negocio (calculos, regras, notificacoes) embutida nos handlers de rotas ao inves de estar em controllers ou services separados.
 
 **Sinais de deteccao:**
-- Route handlers contendo queries SQL diretamente
-- Calculos de preco, desconto, transicoes de status dentro de funcoes de rota
-- Logica de notificacao (email, SMS) embutida em route handlers
-- Validacao complexa dentro de controllers ao inves de service/validation layer
-- Print statements simulando envio de email/SMS/push
+- Route handlers executando queries de banco diretamente
+- Calculos de preco, desconto ou transicoes de estado dentro de funcoes de rota
+- Logica de notificacao (email, SMS, push) embutida em rotas
+- Validacao complexa de regras de negocio misturada com parseamento de request
+- Simulacao de servicos externos via print/log dentro de rotas
 
-### 7. Password/Secret Exposure in API Responses
+**Impacto:** Impossivel reutilizar logica em outro contexto (CLI, tests, outros endpoints). Impossivel testar unitariamente.
+
+---
+
+### 7. Sensitive Data Exposure in API Responses
+
+**Conceito:** Endpoints retornando dados sensíveis (senhas, hashes, secrets, cartoes) nas respostas HTTP.
 
 **Sinais de deteccao:**
-- Metodos `to_dict()` incluindo campos de senha
-- Responses retornando `senha`, `password`, `pass`, `hash`
-- Health check expondo SECRET_KEY ou config values
-- Listagem de usuarios retornando password hashes
-- Log de numeros de cartao de credito em console.log
+- Metodos de serializacao de modelos incluindo campos de senha ou hash
+- Respostas de API retornando campos como password, senha, hash, secret
+- Endpoints de health check ou debug expondo configuracoes internas (SECRET_KEY, credenciais)
+- Log de dados sensiveis (numeros de cartao, senhas) no output
+- Retorno de dados sensiveis apos operacoes de criacao ou atualizacao
+
+**Impacto:** Qualquer consumidor da API tem acesso a dados que deveriam ser internos. Viola principios de seguranca (PCI-DSS para cartoes, etc.).
+
+---
 
 ### 8. Tight Coupling / Global Mutable State
 
-**Sinais de deteccao:**
-- `from database import get_db` usado diretamente em route handlers
-- Estado global mutavel (`global db_connection`, `globalCache`, `totalRevenue`)
-- `let self = this` pattern para contornar escopo de callbacks
-- Servicos instanciados com config hardcoded ao inves de injetado
-- Modulo de database com conexao global compartilhada
-
-### 9. Callback Hell (Node.js)
+**Conceito:** Componentes fortemente acoplados via estado global mutavel ou dependencias diretas hardcoded.
 
 **Sinais de deteccao:**
-- 4+ niveis de callbacks aninhadas
-- `db.get()` dentro de `db.get()` dentro de `db.run()`
-- Contadores manuais de pending callbacks (`coursesPending--`)
-- Error handling inconsistente entre niveis de callback
+- Conexao de banco como variavel global mutavel compartilhada entre modulos
+- Estado global mutavel exportado como modulo (caches, contadores)
+- Import direto do modulo de banco dentro de funcoes de rota
+- Uso de `self = this` ou workaround similar para contornar escopo
+- Instanciacao de servicos com configuracao hardcoded ao inves de injetada
+
+**Impacto:** Dificil testar com mocks. Estado compartilhado pode causar comportamento imprevisivel sob concorrencia. Mudancas em um modulo propagam efeitos colaterais.
+
+---
+
+### 9. Callback / Promise Nesting Hell
+
+**Conceito:** Multiplas operacoes assincronas aninhadas em vez de encadeadas linearmente.
+
+**Sinais de deteccao:**
+- 4 ou mais niveis de funcoes aninhadas (callbacks, then chains, etc.)
+- Contadores manuais para rastrear completude de operacoes paralelas
+- Error handling inconsistente entre niveis de aninhamento
+- Padrao onde o resultado de uma operacao assincrona imediatamente dispara outra, em cadeia profunda
+
+**Impacto:** Codigo dificil de ler e manter. Erros em niveis internos sao dificeis de rastrear. Impossivel usar try/catch de forma efetiva.
 
 ---
 
@@ -127,57 +142,60 @@ function badCrypto(pwd) {
 
 ### 10. N+1 Query Problem
 
-**Sinais de deteccao:**
-- Queries dentro de loops (for/forEach) consultando a mesma tabela por iteracao
-- `cursor.execute()` ou `Model.query.get()` dentro de um `for` loop
-- Carregamento de associacoes uma-a-uma ao inves de eager loading
-- Queries separadas para dados relacionados que poderiam ser JOINed
+**Conceito:** Queries ao banco executadas dentro de loops, gerando uma query por iteracao ao inves de uma unica query otimizada.
 
-```python
-for row in rows:
-    cursor.execute("SELECT * FROM itens WHERE pedido_id = " + str(row["id"]))
-```
-```javascript
-courses.forEach(c => {
-    this.db.all("SELECT * FROM enrollments WHERE course_id = ?", [c.id], (err, enrollments) => {
-        enrollments.forEach(enr => {
-            this.db.get("SELECT * FROM users WHERE id = ?", [enr.user_id], ...);
-        });
-    });
-});
-```
+**Sinais de deteccao:**
+- Execucao de queries dentro de loops (for, forEach, while, etc.)
+- Para cada item de uma lista, uma nova query buscando dados relacionados
+- Carregamento de associacoes um-a-um em vez de eager loading
+- Queries separadas para dados relacionados que poderiam ser unidas com JOIN
+
+**Impacto:** Performance degrada linearmente com o volume de dados. Com N itens, gera N+1 queries ao inves de 1.
+
+---
 
 ### 11. Duplicated Code
 
+**Conceito:** Logica identica ou quase identica repetida em multiplos lugares.
+
 **Sinais de deteccao:**
-- Funcoes quase identicas para modelos diferentes (mesma estrutura, tabela diferente)
-- Blocos `try/except` repetidos com padrao identico
+- Funcoes quase identicas para entidades diferentes (mesma estrutura, tabela diferente)
+- Blocos de tratamento de erro repetidos com padrao identico
 - Logica de serializacao repetida em multiplos lugares
-- Logica de overdue/check copiada em 3+ arquivos de routes
-- Validacao duplicada entre criar e atualizar
+- Validacao duplicada entre operacoes de criacao e atualizacao
+- Logica de verificacao (ex: overdue, status check) copiada em 3 ou mais arquivos
 
-### 12. Bare Except / Missing Error Handling
+**Impacto:** Mudancas precisam ser replicadas em multiplos lugares. Facil esquecer um ponto de duplicacao ao corrigir um bug.
+
+---
+
+### 12. Inadequate Error Handling
+
+**Conceito:** Tratamento de erros generico, ausente ou que engole excecoes silenciosamente.
 
 **Sinais de deteccao:**
-- `except:` sem tipo de excecao especifico (bare except)
-- `except Exception as e:` que retorna erro generico sem log util
-- Promises nao tratadas em Node.js
-- Routes sem try/except
-- Erros retornados como strings ao inves de JSON estruturado
+- Blocos catch/except sem tipo especifico de excecao (catch-all)
+- Excecoes capturadas e engolidas sem log ou re-throw
+- Erros retornados como texto simples em vez de formato estruturado
+- Ausencia de tratamento de erros em operacoes criticas
+- Mensagens de erro genericas que nao ajudam a identificar o problema
+
+**Impacto:** Bugs reais podem ser escondidos silenciosamente. Debug dificultado pela falta de informacao util.
+
+---
 
 ### 13. Deprecated API Usage
 
+**Conceito:** Uso de funcoes ou metodos que foram marcados como deprecated ou removidos em versoes mais recentes das dependencias.
+
 **Sinais de deteccao:**
+- Funcoes de data/hora que retornam valores sem timezone quando ha alternativas com timezone
+- Metodos de ORM que foram substituidos por novas APIs
+- Drivers de banco em modo verbose/debug em producao
+- Padroes assincronos obsoletos (callbacks quando async/await esta disponivel)
+- Qualquer uso de API que a propria documentacao marca como deprecated ou legacy
 
-**Python:**
-- `datetime.utcnow()` — deprecated Python 3.12+. Usar `datetime.now(timezone.utc)`
-- `datetime.utcnow` sem `()` — referencia ao metodo ao inves de chamada
-- `Model.query.get(id)` — deprecated SQLAlchemy 2.x. Usar `db.session.get(Model, id)`
-
-**Node.js:**
-- `sqlite3.verbose()` em producao
-- Callback patterns ao inves de async/await
-- `new sqlite3.Database(':memory:')` em codigo de producao
+**Impacto:** Gera warnings, pode quebrar ao atualizar dependencias, e muitas vezes indica um problema conceitual (ex: datas sem timezone).
 
 ---
 
@@ -185,33 +203,55 @@ courses.forEach(c => {
 
 ### 14. Poor Variable Naming
 
+**Conceito:** Variaveis com nomes que nao comunicam seu proposito.
+
 **Sinais de deteccao:**
-- Variaveis de uma letra (`u`, `e`, `p`) para dados importantes
-- Abreviacoes obscuras (`usr`, `eml`, `pwd`, `cid`, `cc`, `enr`)
-- Nomes genericos (`data`, `result`, `item`) onde nomes especificos seriam mais claros
+- Variaveis de uma letra para dados importantes
+- Abreviacoes obscuras que nao sao universalmente conhecidas
+- Nomes genericos (data, result, item) onde nomes especificos seriam mais claros
+
+**Impacto:** Dificulta a leitura e compreensao do codigo. Novos desenvolvedores precisam decifrar significados.
+
+---
 
 ### 15. Magic Numbers / Magic Strings
 
-**Sinais de deteccao:**
-- Numeros hardcoded sem explicacao (thresholds de desconto: `> 10000`, `> 5000`)
-- Strings de status repetidas (`'pendente'`, `'aprovado'`, `'done'`)
-- Portas hardcoded (`5000`, `3000`)
-- Tamanho minimo de senha como numero solto (`< 4`)
-
-### 16. Debug Mode / Verbose Logging in Production
+**Conceito:** Valores literais espalhados pelo codigo sem constante nomeada ou explicacao.
 
 **Sinais de deteccao:**
-- `debug=True` em `app.run()` ou `app.config`
-- `print()` como logging ao inves de framework estruturado
-- `console.log()` em producao Node.js
-- `sqlite3.verbose()` em producao
+- Numeros sem explicacao contextual (thresholds, limites, multiplicadores)
+- Strings de status ou categorias repetidas em multiplos arquivos
+- Portas, tamanhos minimos, timeouts hardcoded como numeros soltos
+- Condicoes baseadas em valores literais sem nome descritivo
 
-### 17. Unused Imports
+**Impacto:** Dificil entender a regra de negocio. Mudancas exigem procura em todo o codigo.
+
+---
+
+### 16. Debug Artifacts in Production Code
+
+**Conceito:** Configuracoes e saidas de debug deixadas em codigo de producao.
+
+**Sinais de deteccao:**
+- Flag de debug habilitada na configuracao da aplicacao
+- Saida de console/print como mecanismo de logging
+- Modo verbose de drivers ou bibliotecas ativado
+- Stack traces expondo detalhes internos em respostas de erro
+
+**Impacto:** Em producao, expoe informacoes internas e polui logs.
+
+---
+
+### 17. Unused Imports / Dead Code
+
+**Conceito:** Modulos importados ou codigo que nunca e utilizado.
 
 **Sinais de deteccao:**
 - Modulos importados mas nao referenciados no codigo
-- `import os, sys, json, time` quando apenas um ou nenhum e usado
-- Imports de modules que poderiam ser lazy-loaded
+- Funcoes ou variaveis definidas mas nunca chamadas
+- Constantes declaradas mas nao utilizadas
+
+**Impacto:** Polui o codigo e pode causar confusao sobre dependencias reais.
 
 ---
 
@@ -222,17 +262,17 @@ courses.forEach(c => {
 | 1 | SQL Injection | CRITICAL |
 | 2 | Hardcoded Credentials | CRITICAL |
 | 3 | God Class / God File | CRITICAL |
-| 4 | Unauthenticated Admin Endpoints | CRITICAL |
+| 4 | Unauthenticated Sensitive Endpoints | CRITICAL |
 | 5 | Weak Cryptography | CRITICAL |
-| 6 | Business Logic in Routes | HIGH |
-| 7 | Password/Secret Exposure | HIGH |
+| 6 | Business Logic in Route Layer | HIGH |
+| 7 | Sensitive Data Exposure in API | HIGH |
 | 8 | Tight Coupling / Global State | HIGH |
-| 9 | Callback Hell | HIGH |
+| 9 | Callback / Promise Nesting Hell | HIGH |
 | 10 | N+1 Query Problem | MEDIUM |
 | 11 | Duplicated Code | MEDIUM |
-| 12 | Bare Except / Missing Error Handling | MEDIUM |
+| 12 | Inadequate Error Handling | MEDIUM |
 | 13 | Deprecated API Usage | MEDIUM |
 | 14 | Poor Variable Naming | LOW |
 | 15 | Magic Numbers / Strings | LOW |
-| 16 | Debug Mode in Production | LOW |
-| 17 | Unused Imports | LOW |
+| 16 | Debug Artifacts in Production | LOW |
+| 17 | Unused Imports / Dead Code | LOW |

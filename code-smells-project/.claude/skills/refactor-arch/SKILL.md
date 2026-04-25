@@ -1,13 +1,13 @@
 ---
 name: refactor-arch
-description: Analisa, audita e refatora projetos automaticamente para o padrao MVC. Funciona com Python/Flask e Node.js/Express.
+description: Analisa, audita e refatora projetos automaticamente para o padrao MVC, independente de tecnologia.
 ---
 
 # Refactor Architect
 
 Voce e um arquiteto de software especialista em refatoracao. Sua missao e analisar o projeto no diretorio atual, identificar problemas arquiteturais e refatora-lo para o padrao MVC.
 
-Execute obrigatoriamente as 3 fases abaixo, em sequencia. NAO pule etapas.
+Execute obrigatoriamente as 3 fases abaixo, em sequencia. NAO pula etapas.
 
 ---
 
@@ -17,9 +17,9 @@ Leia o arquivo de referencia `project-analysis.md` para as heuristicas de detecc
 
 Analise TODOS os arquivos fonte do projeto no diretorio atual e identifique:
 
-1. **Linguagem** — procure por indicadores (extensoes, imports, package managers)
-2. **Framework e versao** — procure no requirements.txt, package.json, ou imports
-3. **Banco de dados** — procure por strings de conexao, imports de drivers, arquivos .db
+1. **Linguagem** — procure por indicadores no projeto
+2. **Framework e versao** — procure nos arquivos de dependencias
+3. **Banco de dados** — procure por strings de conexao, imports de drivers, arquivos de dados
 4. **Dominio** — leia os nomes de rotas, modelos e endpoints para determinar o negocio
 5. **Arquitetura atual** — classifique: Monolitica / Parcial / MVC / Outra
 6. **Dependencias** — liste todas as dependencias externas
@@ -76,53 +76,53 @@ SO prossiga para a Fase 3 se o usuario responder `y` ou `yes` explicitamente. Se
 
 Leia os arquivos de referencia:
 - `architecture-guidelines.md` — regras do padrao MVC
-- `refactoring-playbook.md` — padroes de transformacao com exemplos
+- `refactoring-playbook.md` — padroes de transformacao
 
-Execute a refatoracao na seguinte ordem:
+Execute a refatoracao seguindo estes passos:
 
-### Passo 1 — Criar estrutura de diretorios
-Crie a estrutura MVC conforme as guidelines para a stack detectada na Fase 1:
-- `config/` — modulo de configuracao
-- `models/` — um arquivo por dominio
-- `controllers/` — um arquivo por dominio
-- `routes/` (ou `views/`) — um arquivo por grupo de endpoints
-- `middlewares/` — error handler centralizado
-- `services/` — servicos cross-cutting (notificacao, pagamento, etc.)
-- Entry point limpo (app.py ou app.js)
+### Passo 1 — Avaliar estado atual
+Antes de criar qualquer arquivo, avalie o que ja existe no projeto. Se o projeto ja possui alguma separacao de camadas, PRESERVE o que esta bom e MELHORE o que precisa. Nao recrie tudo do zero se parte da estrutura ja e adequada.
 
-### Passo 2 — Extrair configuracao
-- Mova TODOS os hardcoded secrets para `config/` lendo de variaveis de ambiente
-- Crie arquivo `.env.example` com as variaveis necessarias
+### Passo 2 — Criar ou ajustar estrutura MVC
+Organize o codigo seguindo as guidelines de MVC para a stack detectada na Fase 1:
+- Camada de **configuracao** — modulo isolado para config
+- Camada de **models** — um modulo por dominio, responsavel pelo acesso a dados
+- Camada de **controllers** — um modulo por dominio, responsavel pela logica de negocio
+- Camada de **routes/views** — definicao de endpoints, apenas recebem request e chamam controllers
+- Camada de **middlewares** — error handling centralizado
+- Camada de **services** — servicos cross-cutting (notificacao, pagamento, etc.)
+- **Entry point** limpo que conecta tudo
+
+### Passo 3 — Extrair configuracao
+- Mova TODOS os hardcoded secrets para o modulo de configuracao, lendo de variaveis de ambiente
+- Crie arquivo de exemplo com as variaveis necessarias
 - Remova credenciais hardcoded do codigo
 
-### Passo 3 — Criar Models
-- Separe a logica de acesso ao banco em arquivos de model por dominio
-- Use parameterized queries ( ? ou %s) — NUNCA string concatenation
+### Passo 4 — Separar Models
 - Cada model e responsavel por UM dominio
+- Models cuidam apenas de acesso ao banco e regras de dominio
+- Use parameterized queries — NUNCA string concatenation
+- Models NUNCA devem importar ou depender de HTTP request/response
 
-### Passo 4 — Criar Controllers
+### Passo 5 — Separar Controllers
 - Extraia logica de negocio dos routes para controllers
 - Controllers recebem dados, chamam models/services, retornam resultados
-- NUNCA coloque SQL em controllers
+- Controllers NUNCA devem conter SQL ou codigo HTTP-specific
 
-### Passo 5 — Criar Routes
+### Passo 6 — Separar Routes
 - Routes apenas definem URLs, extraem parametros do request e chamam controllers
-- Registre como Blueprints (Flask) ou Routers (Express)
+- Routes NUNCA devem conter logica de negocio ou database queries
 
-### Passo 6 — Error handling centralizado
+### Passo 7 — Error handling centralizado
 - Crie middleware de error handling
 - Formato de erro consistente em toda a API
-- Remova try/except dispersos nos routes
-
-### Passo 7 — Entry point limpo
-- app.py/app.js deve ser apenas composition root
-- Importa config, inicializa DB, registra blueprints/routes, registra middlewares
+- Remova error handling disperso nos routes
 
 ### Passo 8 — Validacao
 Apos concluir a refatoracao, valide:
 
 1. **Boot** — inicie a aplicacao e verifique que nao ha erros de import ou inicializacao
-2. **Endpoints** — teste TODOS os endpoints originais com curl para confirmar que continuam respondendo
+2. **Endpoints** — teste TODOS os endpoints originais para confirmar que continuam respondendo
 3. **Anti-patterns** — verifique que os problemas da Fase 2 foram resolvidos
 
 Imprima o resultado:
@@ -145,11 +145,11 @@ PHASE 3: REFACTORING COMPLETE
 
 ## REGRAS GERAIS
 
-- A skill e AGNOSTICA de tecnologia — funciona com Python/Flask e Node.js/Express
+- A skill e AGNOSTICA de tecnologia — funciona com qualquer linguagem e framework
 - NUNCA modifique arquivos antes da confirmacao na Fase 2
 - Preserve TODOS os endpoints originais — nenhum pode ser removido
 - Mantenha o banco de dados funcionando — nao quebre schemas existentes
 - Sempre use parameterized queries
 - Extraia TODOS os secrets para variaveis de ambiente
 - Cada arquivo deve ter uma unica responsabilidade
-- Se a stack for Node.js, use async/await ao inves de callbacks
+- Adapte a refatoracao ao contexto: se o projeto ja tem estrutura parcial, melhore ao inves de recriar

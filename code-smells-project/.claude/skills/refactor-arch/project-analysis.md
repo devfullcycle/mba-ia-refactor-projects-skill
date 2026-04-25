@@ -1,83 +1,64 @@
 # Project Analysis Heuristics
 
-## 1. Language Detection
+## Language Detection
 
-Procure por estes indicadores na ordem:
+Identifique a linguagem procurando por:
 
-| Indicador | Linguagem |
-|-----------|-----------|
-| `requirements.txt`, arquivos `.py`, `from flask` / `import flask` | Python |
-| `package.json`, arquivos `.js`, `require('express')` / `import express` | Node.js/JavaScript |
-| `go.mod`, arquivos `.go`, `package main` | Go |
-| `pom.xml` ou `build.gradle`, arquivos `.java` | Java |
+- **Extensao dos arquivos fonte** — a extensao predominante indica a linguagem
+- **Arquivos de gerenciamento de dependencias** — cada linguagem tem seus arquivos caracteristicos (requirements.txt, package.json, go.mod, pom.xml, Cargo.toml, etc.)
+- **Sintaxe dos imports** — o padrao de import revela a linguagem
+- **Estrutura do projeto** — algumas linguagens tem convencoes obrigatorias
 
-## 2. Framework Detection
+## Framework Detection
 
-### Python
-- `flask` em requirements.txt → Flask (verifique versao no arquivo)
-- `django` em requirements.txt → Django
-- `fastapi` em requirements.txt → FastAPI
-- Se `flask-sqlalchemy` tambem esta presente → Flask + SQLAlchemy ORM
+Procure nos arquivos de dependencia pela presenca de frameworks web:
 
-### Node.js
-- `express` em package.json dependencies → Express (verifique versao)
-- `koa` em package.json dependencies → Koa
-- `fastify` em package.json dependencies → Fastify
+- Leia o arquivo de dependencias e identifique frameworks web listados
+- Verifique a versao declarada na dependencia
+- Confirme com os imports nos arquivos fonte — o framework principal aparecera na maioria dos arquivos
 
-Extraia a versao da dependencia (ex: `"express": "^4.18.2"` → Express 4.18).
-
-## 3. Database Detection
+## Database Detection
 
 Procure por:
-- `sqlite3` import ou arquivos `.db` → SQLite
-- `psycopg2` ou `postgresql://` em connection strings → PostgreSQL
-- `pymongo` ou `mongodb://` → MongoDB
-- `flask-sqlalchemy` ou `SQLAlchemy` → SQLAlchemy ORM (verifique DB subjacente)
-- `:memory:` → SQLite in-memory (dados perdidos ao reiniciar)
-- `mysql` imports → MySQL
 
-Verifique se usa ORM (SQLAlchemy, Sequelize, Prisma) ou queries diretas.
+- Strings de conexao — qualquer string contendo protocolos de banco (sqlite://, postgresql://, mongodb://, mysql://, etc.)
+- Imports de drivers de banco — modulos especificos para conexao com banco de dados
+- Arquivos de banco — presenca de arquivos .db, .sqlite, etc.
+- Uso de ORM — imports de ORMs indicam qual banco esta em uso
+- Banco em memoria — strings como `:memory:` indicam banco que nao persiste dados
 
-## 4. Architecture Classification
+## Architecture Classification
 
 Leia todos os arquivos fonte e classifique:
 
-1. **Monolitica** — Toda logica em 1-3 arquivos (routes, DB queries, business rules juntos)
-2. **Partial separation** — Alguns arquivos separados (models/, routes/) mas logica vaza entre camadas
-3. **Layered** — Separacao clara (models/, controllers/, routes/, config/)
-4. **MVC** — Separacao Model-View-Controller adequada
+1. **Monolitica** — Poucos arquivos contendo toda a logica misturada (routes, queries, business rules)
+2. **Parcial** — Existe alguma separacao de diretorios mas a logica vaza entre camadas
+3. **MVC** — Separacao adequada entre Models, Views/Routes e Controllers
+4. **Outra** — Organizacao diferente que nao se encaixa nas categorias acima
 
 ### Sinais para classificar:
-- Routes chamando DB diretamente → Monolitica ou separacao pobre
-- Controllers com queries SQL → Logica de negocio misturada com acesso a dados
-- Models com request/response → Violacao de camada
-- Multiplas entidades em um arquivo → God Class/File
-- Se existe controllers/ mas routes chamam models diretamente → separacao parcial
-- Se existe models/, routes/, services/, utils/ → verificar se a logica realmente respeita as camadas
+- Routes chamando banco diretamente → separacao inadequada
+- Arquivos com multiplas entidades/domínios → God File
+- Lógica de negócio misturada com definição de rotas → violacao de camada
+- Models manipulando request/response → violacao de responsabilidade
+- Se o projeto ja tem estrutura parcial, avalie o que funciona e o que precisa melhorar
 
-## 5. Domain Detection
+## Domain Detection
 
-Leia as definicoes de rotas, nomes de models e endpoints:
+Leia as definicoes de rotas, nomes de modelos e endpoints para determinar o dominio de negocio:
+- Produtos, pedidos, carrinho → E-commerce
+- Cursos, matriculas, pagamentos → LMS / Educacao
+- Tasks, projetos, categorias → Gestao de tarefas/projetos
+- Posts, comentarios, usuarios → Social / Blog
+- Ou qualquer outro dominio identificado pelos nomes das entidades
 
-| Palavras-chave nas rotas | Dominio |
-|---------------------------|---------|
-| produtos, pedidos, usuarios, carrinho | E-commerce |
-| courses, enrollments, payments, checkout | LMS (Learning Management System) |
-| tasks, projects, users, categories | Task/Project Management |
-| posts, comments, users, likes | Social Media / Blog |
+## Dependency Mapping
 
-## 6. Dependency Mapping
+Liste todas as dependencias externas do arquivo de gerenciamento de pacotes do projeto.
+Nao inclua dependencias de desenvolvimento.
 
-Liste todas as dependencias externas de:
-- Python: `requirements.txt` ou `pyproject.toml`
-- Node.js: `package.json` → `dependencies` (NAO incluir devDependencies)
+## Source File Analysis
 
-## 7. Source File Analysis
-
-Conte todos os arquivos de codigo fonte:
-- Python: `*.py`
-- Node.js: `*.js` (excluir `node_modules/`)
-- NAO contar: `.git/`, `__pycache__/`, `node_modules/`, `*.db`, `*.json` de lock
-
-Estime o total de linhas de codigo somando todos os arquivos fonte.
-Liste cada arquivo com sua funcao resumida.
+- Conte todos os arquivos de codigo fonte (excluindo: .git, node_modules, __pycache__, vendor, .venv, arquivos de lock, arquivos de dados)
+- Estime o total de linhas de codigo
+- Liste cada arquivo com sua funcao resumida
