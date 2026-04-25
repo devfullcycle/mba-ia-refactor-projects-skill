@@ -13,7 +13,7 @@ Execute obrigatoriamente as 3 fases abaixo, em sequencia. NAO pula etapas.
 
 ## FASE 1 — ANALISE DO PROJETO
 
-Leia o arquivo de referencia `project-analysis.md` para as heuristicas de deteccao.
+Leia o arquivo de referencia `references/project-analysis.md` para as heuristicas de deteccao.
 
 Analise TODOS os arquivos fonte do projeto no diretorio atual e identifique:
 
@@ -46,8 +46,8 @@ DB tables:     <lista de tabelas ou N/A>
 ## FASE 2 — AUDITORIA ARQUITETURAL
 
 Leia os arquivos de referencia:
-- `anti-patterns-catalog.md` — catalogo completo de anti-patterns com sinais de deteccao
-- `report-template.md` — formato do relatorio
+- `references/anti-patterns-catalog.md` — catalogo completo de anti-patterns com sinais de deteccao
+- `references/report-template.md` — formato do relatorio
 
 Para CADA arquivo fonte do projeto, cruze o codigo contra o catalogo de anti-patterns. Para cada deteccao, documente:
 
@@ -75,8 +75,8 @@ SO prossiga para a Fase 3 se o usuario responder `y` ou `yes` explicitamente. Se
 ## FASE 3 — REFATORACAO PARA MVC
 
 Leia os arquivos de referencia:
-- `architecture-guidelines.md` — regras do padrao MVC
-- `refactoring-playbook.md` — padroes de transformacao
+- `references/architecture-guidelines.md` — regras do padrao MVC
+- `references/refactoring-playbook.md` — padroes de transformacao
 
 Execute a refatoracao seguindo estes passos:
 
