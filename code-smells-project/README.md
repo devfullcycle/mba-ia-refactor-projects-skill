@@ -1,108 +1,108 @@
 # code-smells-project
 
-API de E-commerce em Python/Flask usada como entrada do desafio `refactor-arch`.
+API de E-commerce (produtos, pedidos, usuários) construída em **Python + Flask + SQLite**.
+
+## O que faz
+
+Gerencia uma loja virtual com catálogo de produtos, carrinho de compras, pedidos e relatórios de vendas. Inclui autenticação básica e endpoints administrativos.
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/` | Index com lista de endpoints |
+| **Produtos** | | |
+| `GET` | `/produtos` | Listar todos os produtos |
+| `GET` | `/produtos/busca?q=&categoria=&preco_min=&preco_max=` | Buscar com filtros |
+| `GET` | `/produtos/<id>` | Buscar por ID |
+| `POST` | `/produtos` | Criar produto |
+| `PUT` | `/produtos/<id>` | Atualizar produto |
+| `DELETE` | `/produtos/<id>` | Remover produto |
+| **Usuários** | | |
+| `GET` | `/usuarios` | Listar usuários (sem senhas) |
+| `GET` | `/usuarios/<id>` | Buscar por ID |
+| `POST` | `/usuarios` | Criar usuário (senha com hash) |
+| `POST` | `/login` | Login (email + senha) |
+| **Pedidos** | | |
+| `POST` | `/pedidos` | Criar pedido com itens |
+| `GET` | `/pedidos` | Listar todos os pedidos (com itens e nomes via JOIN) |
+| `GET` | `/pedidos/usuario/<id>` | Pedidos de um usuário |
+| `PUT` | `/pedidos/<id>/status` | Atualizar status |
+| **Relatórios** | | |
+| `GET` | `/relatorios/vendas` | Relatório de vendas com faturamento |
+| `GET` | `/health` | Health check (status + contagens) |
+| **Admin** (requer Bearer token) | | |
+| `POST` | `/admin/reset-db` | Limpa todos os dados |
+| `POST` | `/admin/query` | Executa SQL arbitrário |
+
+### Banco de Dados
+
+SQLite em arquivo (`loja.db`), criado automaticamente no primeiro boot com dados de exemplo:
+
+| Tabela | Descrição |
+|--------|-----------|
+| `produtos` | Catálogo (nome, descrição, preço, estoque, categoria) |
+| `usuarios` | Usuários (nome, email, senha hasheada, tipo) |
+| `pedidos` | Pedidos (usuário, status, total) |
+| `itens_pedido` | Itens de cada pedido (produto, quantidade, preço unitário) |
+
+### Dados de Exemplo (seed)
+
+- **Admin:** admin (`admin@loja.com`, senha: `admin123`)
+- **Usuários:** Maria, Carlos, Ana
+- **Produtos:** Notebook, Mouse, Teclado, Monitor, Webcam, Headset
+- **Pedidos:** Alguns pedidos de exemplo com itens
 
 ## Como rodar
 
 ```bash
 pip install -r requirements.txt
+cp .env.example .env    # ajuste as variáveis
 python app.py
 ```
 
-A aplicação sobe em `http://localhost:5000`. O banco SQLite (`loja.db`) é criado automaticamente no primeiro boot, já com produtos e usuários de exemplo.
+Sobe em `http://localhost:5000`.
 
----
+## Arquitetura
 
-## Análise Manual
+```
+app.py                       # Composition root (create_app factory)
+config/
+  settings.py                # Variáveis de ambiente + constantes
+database/
+  connection.py              # Conexão via Flask g (sem estado global)
+  schema.py                  # Criação de tabelas + seed data (senhas com hash)
+models/
+  product_model.py           # CRUD de produtos + busca com filtros
+  user_model.py              # CRUD de usuários + autenticação
+  order_model.py             # CRUD de pedidos (JOINs, sem N+1)
+  report_model.py            # Relatório de vendas + health data
+controllers/
+  product_controller.py      # Validação + lógica de produtos
+  user_controller.py         # Validação + lógica de usuários
+  order_controller.py        # Lógica de pedidos + delegação de notificação
+  report_controller.py       # Orquestração de relatórios
+routes/
+  product_routes.py          # Endpoints de produtos (Blueprint)
+  user_routes.py             # Endpoints de usuários + login
+  order_routes.py            # Endpoints de pedidos
+  report_routes.py           # Endpoints de relatórios + health
+  admin_routes.py            # Endpoints admin (protegidos por token)
+services/
+  notification_service.py    # Abstração de notificações (logging)
+middlewares/
+  error_handler.py           # Error handling centralizado + auth admin
+```
 
-### CRITICAL
+**Direção de dependência:** Routes → Controllers → Models. Nunca o reverso.
 
-#### 1. SQL Injection
-- **Arquivo:** `models.py:28, 48-49, 58-60, 68, 92, 109-110, 127-128, 140, 155, 159, 163-165, 174, 187-199, 220, 279, 291-297`
-- **Problema:** Todas as queries SQL usam string concatenation em vez de parâmetros preparados. Exemplo: `cursor.execute("SELECT * FROM produtos WHERE id = " + str(id))` e `cursor.execute("INSERT INTO ... VALUES ('" + nome + "', ...")`.
-- **Impacto:** Qualquer input do usuário pode injetar SQL arbitrário no banco. Um atacante pode ler, modificar ou deletar todos os dados.
-- **Severidade:** CRITICAL
+## Configuração
 
-#### 2. Hardcoded SECRET_KEY
-- **Arquivo:** `app.py:7`
-- **Problema:** `app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"` — a chave secreta do Flask está hardcoded no código-fonte.
-- **Impacto:** Qualquer pessoa com acesso ao código pode forjar sessões e tokens do Flask.
-- **Severidade:** CRITICAL
+Veja `.env.example`:
 
-#### 3. Hardcoded Passwords no Seed
-- **Arquivo:** `database.py:76-83`
-- **Problema:** Senhas de usuários seed hardcoded: `"admin123"`, `"123456"`, `"senha123"`. Senhas armazenadas em plaintext no banco.
-- **Impacto:** Credenciais expostas no código-fonte, senhas fracas e sem hash.
-- **Severidade:** CRITICAL
-
-#### 4. SQL Execution Endpoint (sem autenticação)
-- **Arquivo:** `app.py:59-78`
-- **Problema:** Endpoint `/admin/query` aceita SQL arbitrário via body (`dados.get("sql")`) e executa diretamente no banco, sem nenhuma autenticação.
-- **Impacto:** Qualquer pessoa pode executar qualquer SQL no banco — DROP TABLE, DELETE, SELECT em dados sensíveis.
-- **Severidade:** CRITICAL
-
-#### 5. Unauthenticated Admin Routes
-- **Arquivo:** `app.py:47-78`
-- **Problema:** `/admin/reset-db` e `/admin/query` não possuem qualquer middleware de autenticação ou autorização.
-- **Impacto:** Qualquer usuário anônimo pode resetar o banco inteiro ou executar queries arbitrárias.
-- **Severidade:** CRITICAL
-
-### HIGH
-
-#### 6. God File (models.py)
-- **Arquivo:** `models.py:1-315`
-- **Problema:** Arquivo único de 315 linhas contém toda a lógica de acesso ao banco para 4 domínios diferentes (produtos, usuários, pedidos, relatórios). Mistura queries SQL, serialização e regras de negócio.
-- **Impacto:** Impossível testar em isolamento. Qualquer mudança em um domínio pode quebrar outro. Violação total do SRP (Single Responsibility Principle).
-- **Severidade:** HIGH
-
-#### 7. Password Exposure em API Responses
-- **Arquivo:** `models.py:83-86` (get_todos_usuarios), `models.py:94-102` (get_usuario_por_id), `controllers.py:289-290` (health_check)
-- **Problema:** Os endpoints de listagem/busca de usuários retornam o campo `senha`. O health check expõe `secret_key` e `debug` no response.
-- **Impacto:** Senhas e secrets visíveis para qualquer consumidor da API.
-- **Severidade:** HIGH
-
-#### 8. Business Logic in Controllers
-- **Arquivo:** `controllers.py:208-210` (notificações), `controllers.py:247-251` (notificações de status)
-- **Problema:** Notificações (email, SMS, push) são simuladas via `print()` diretamente nos controllers. Lógica de negócio misturada com apresentação.
-- **Impacto:** Impossível testar notificações, impossível trocar o mecanismo sem alterar o controller.
-- **Severidade:** HIGH
-
-### MEDIUM
-
-#### 9. N+1 Query Problem
-- **Arquivo:** `models.py:186-201` (get_pedidos_usuario), `models.py:218-231` (get_todos_pedidos)
-- **Problema:** Para cada pedido, uma query busca os itens; para cada item, outra query busca o nome do produto. Com 100 pedidos de 5 itens cada = 600 queries ao invés de 1 JOIN.
-- **Impacto:** Performance degrada linearmente com o volume de pedidos.
-- **Severidade:** MEDIUM
-
-#### 10. Duplicated Code
-- **Arquivo:** `models.py:171-201` vs `models.py:203-233`
-- **Problema:** `get_pedidos_usuario()` e `get_todos_pedidos()` são quase idênticas — só diferem no WHERE. A serialização de produtos em dicts está repetida 5+ vezes (linhas 10-21, 29-40, 78-87, 93-102, 302-313).
-- **Impacto:** Manutenção difícil — mudanças precisam ser replicadas em múltiplos lugares.
-- **Severidade:** MEDIUM
-
-#### 11. Duplicated Validation Logic
-- **Arquivo:** `controllers.py:28-55` vs `controllers.py:64-95`
-- **Problema:** A validação de produto (nome obrigatório, preco obrigatório, estoque obrigatório, preço negativo, etc.) está duplicada entre `criar_produto` e `atualizar_produto`.
-- **Impacto:** Mudança de regra de negócio precisa ser feita em 2+ lugares.
-- **Severidade:** MEDIUM
-
-### LOW
-
-#### 12. Debug Mode Enabled
-- **Arquivo:** `app.py:8`, `app.py:88`
-- **Problema:** `app.config["DEBUG"] = True` e `app.run(debug=True)`.
-- **Impacto:** Em produção, expõe stack traces detalhados e permite execução de código via debugger.
-- **Severidade:** LOW
-
-#### 13. Magic Numbers
-- **Arquivo:** `models.py:257-262`
-- **Problema:** Thresholds de desconto hardcoded: `> 10000` (10%), `> 5000` (5%), `> 1000` (2%). Sem constantes nomeadas.
-- **Impacto:** Difícil entender a regra de negócio sem ler o código. Mudanças exigem caça aos números.
-- **Severidade:** LOW
-
-#### 14. print() como Logging
-- **Arquivo:** `controllers.py:8, 57, 106, 161, 179, 208-210, 218, 248-250` e `database.py:56`
-- **Problema:** Uso de `print()` em vez de um framework de logging estruturado. Mensagens como `"ERRO: " + str(e)` sem nível ou contexto.
-- **Impacto:** Impossível filtrar logs por nível, enviar para sistema externo ou rastrear em produção.
-- **Severidade:** LOW
+```env
+SECRET_KEY=dev-secret-key-change-in-production
+FLASK_DEBUG=false
+DATABASE_PATH=loja.db
+ADMIN_TOKEN=admin-dev-token
+```
