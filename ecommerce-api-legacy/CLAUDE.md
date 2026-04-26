@@ -1,11 +1,12 @@
 # ecommerce-api-legacy — LMS API com Checkout
 
-Node.js/Express API de LMS (cursos, matrículas, pagamentos, checkout).
+Node.js/Express API de LMS (cursos, matrículas, pagamentos, checkout) refatorada para arquitetura MVC.
 
 ## Stack
 - Node.js + Express 4.18 + sqlite3 5.1
+- bcryptjs para hashing de senhas
+- dotenv para configuração via variáveis de ambiente
 - SQLite em memória (`:memory:` — dados perdidos ao reiniciar)
-- Sem ORM — callbacks diretas do sqlite3
 
 ## Como rodar
 ```bash
@@ -14,13 +15,35 @@ npm start
 # Roda em http://localhost:3000
 ```
 
-## Estrutura atual
+## Estrutura MVC
 ```
-src/app.js          # Entry point, cria Express + AppManager
-src/AppManager.js   # God Class: init DB, define routes, business logic
-src/utils.js        # Config hardcoded, cache global, badCrypto()
-package.json        # express, sqlite3
-api.http            # Exemplos de requisições (VS Code REST Client)
+src/
+  app.js                          # Entry point (composition root)
+  config/
+    index.js                      # Config from env vars
+  database/
+    connection.js                 # SQLite connection factory + query helpers (promisified)
+    schema.js                     # Schema creation + seeding
+  models/
+    auditLogModel.js              # Audit log data access
+    courseModel.js                # Course data access
+    enrollmentModel.js            # Enrollment data access
+    paymentModel.js               # Payment data access
+    reportModel.js                # Financial report (JOIN query)
+    userModel.js                  # User data access + bcrypt hashing
+  controllers/
+    checkoutController.js         # Checkout business logic
+    reportController.js           # Report aggregation logic
+    userController.js             # User deletion + cascade
+  routes/
+    checkoutRoutes.js             # POST /api/checkout
+    reportRoutes.js               # GET /api/admin/financial-report
+    userRoutes.js                 # DELETE /api/users/:id
+    index.js                      # Route aggregator
+  services/
+    paymentService.js             # Payment processing (card validation)
+  middlewares/
+    errorHandler.js               # Centralized error handling (AppError class)
 ```
 
 ## Endpoints
@@ -29,7 +52,18 @@ api.http            # Exemplos de requisições (VS Code REST Client)
 |--------|------|-----------|
 | POST | `/api/checkout` | Checkout: cria usuário se não existe, matricula, processa pagamento |
 | GET | `/api/admin/financial-report` | Relatório financeiro por curso (receita + alunos) |
-| DELETE | `/api/users/:id` | Deleta usuário (sem cascade) |
+| DELETE | `/api/users/:id` | Deleta usuário com cascade (enrollments + payments) |
+
+## Request body — Checkout
+```json
+{
+  "userName": "Nome",
+  "email": "email@example.com",
+  "password": "senha",
+  "courseId": 1,
+  "cardNumber": "4111222233334444"
+}
+```
 
 ## Tabelas SQLite (in-memory)
 - `users` (id, name, email, pass)
@@ -38,20 +72,11 @@ api.http            # Exemplos de requisições (VS Code REST Client)
 - `payments` (id, enrollment_id, amount, status)
 - `audit_logs` (id, action, created_at)
 
-## Fluxo principal — Checkout
-1. Recebe `usr`, `eml`, `pwd`, `c_id`, `card` no body
-2. Busca curso por ID
-3. Busca usuário por email; se não existe, cria com `badCrypto(pwd)`
-4. Valida cartão: começa com "4" = aprovado, senão recusado
-5. Cria matrícula → cria pagamento → cria audit log → retorna sucesso
+## Variáveis de ambiente
+Ver `.env.example` para todas as variáveis necessárias. Nenhum secret é hardcoded no código.
 
-## Problemas conhecidos (análise manual)
-- Hardcoded: senha DB, payment gateway key, credenciais SMTP
-- Weak cryptography: `badCrypto()` é loop de base64 sem segurança
-- Log de número de cartão de crédito no console
-- God Class: AppManager faz tudo (DB init + routes + business logic)
-- Callback hell: 4-5 níveis de nesting no checkout
-- N+1 queries no financial-report (curso → matrículas → user + payment)
-- DELETE de usuário sem cascade (matrículas e pagamentos ficam órfãos)
-- Estado global mutável (`globalCache`, `totalRevenue`)
-- Variáveis com nomes obscuros (`u`, `e`, `p`, `cid`, `cc`)
+## Regras de erro
+Todos os erros passam pelo middleware centralizado (`errorHandler.js`) e retornam formato JSON consistente:
+```json
+{ "error": { "code": 400, "message": "descrição" } }
+```
