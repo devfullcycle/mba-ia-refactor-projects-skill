@@ -1,31 +1,31 @@
 @baseUrl = http://localhost:3000
 
-### Checkout - sucesso
+### Checkout - success
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
 {
-  "usr": "Guilherme",
-  "eml": "gui@fullcycle.com.br",
-  "pwd": "senhaforte",
-  "c_id": 2,
-  "card": "4111222233334444"
+  "userName": "Guilherme",
+  "email": "gui@fullcycle.com.br",
+  "password": "senhaforte",
+  "courseId": 2,
+  "cardNumber": "4111222233334444"
 }
 
-### Checkout - pagamento recusado
+### Checkout - payment denied
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
 {
-  "usr": "João",
-  "eml": "joao@teste.com",
-  "pwd": "123",
-  "c_id": 1,
-  "card": "5111222233334444"
+  "userName": "João",
+  "email": "joao@teste.com",
+  "password": "123",
+  "courseId": 1,
+  "cardNumber": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
+### Financial report (admin)
 GET {{baseUrl}}/api/admin/financial-report
 
-### Deletar usuário
+### Delete user
 DELETE {{baseUrl}}/api/users/1
