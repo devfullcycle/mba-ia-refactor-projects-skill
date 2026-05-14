@@ -62,7 +62,10 @@ def create_task(data):
 
     description = data.get("description", "")
     status = data.get("status", "pending")
-    priority = data.get("priority", 3)
+    try:
+        priority = int(data.get("priority", 3))
+    except (TypeError, ValueError):
+        return {"error": "Prioridade deve ser um inteiro entre 1 e 5"}, 400
     user_id = data.get("user_id")
     category_id = data.get("category_id")
     due_date = data.get("due_date")
@@ -126,9 +129,13 @@ def update_task(task_id, data):
             return {"error": "Status inválido"}, 400
         task.status = data["status"]
     if "priority" in data:
-        if data["priority"] < 1 or data["priority"] > 5:
+        try:
+            prio = int(data["priority"])
+        except (TypeError, ValueError):
+            return {"error": "Prioridade deve ser um inteiro entre 1 e 5"}, 400
+        if prio < 1 or prio > 5:
             return {"error": "Prioridade deve ser entre 1 e 5"}, 400
-        task.priority = data["priority"]
+        task.priority = prio
     if "user_id" in data:
         uid = data["user_id"]
         if uid and not User.query.get(uid):

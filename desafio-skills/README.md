@@ -16,6 +16,7 @@ Para cada projeto foram identificados **pelo menos cinco** problemas, com **pelo
 | 4 | **MEDIUM** | **Acoplamento e “God module”**: `models.py` concentra persistência, regras e montagem de resposta; validação de negócio repetida em `controllers.py` | `models.py`, `controllers.py` | Dificulta testes unitários e evolução por domínio. |
 | 5 | **MEDIUM** | **Lista de usuários retorna `senha` em claro** para clientes da API | `models.py` `get_todos_usuarios` / serialização | Violação de privacidade e incentiva abuso se vazamento de logs. |
 | 6 | **LOW** | **Mensagens de negócio simuladas** (`print` de e-mail/SMS) misturadas ao fluxo HTTP | `controllers.py` 207–210 | Ruído operacional; ideal extrair para serviço de notificação ou fila. |
+| 7 | **LOW** | **`DEBUG=True` como padrão em produção** e magic numbers nas faixas do relatório de faturamento | `app.py` 9; `models.py` 256–262 | Flag de debug ativa stack trace ao cliente; constantes sem nome dificultam ajuste de regras de negócio. |
 
 ### `ecommerce-api-legacy` (Node.js / Express — LMS + checkout)
 
@@ -27,6 +28,7 @@ Para cada projeto foram identificados **pelo menos cinco** problemas, com **pelo
 | 4 | **MEDIUM** | **Callback hell / fluxo assíncrono aninhado** no checkout e no relatório financeiro | `AppManager.js` 37–77, 80–128 | Bugs de concorrência e manutenção; erros difíceis de raciocinar. |
 | 5 | **MEDIUM** | **Padrão N+1** no relatório (`forEach` de cursos → queries por matrícula/usuário/pagamento) | `AppManager.js` 89–126 | Degrada com volume; sintoma de ausência de camada de acesso a dados. |
 | 6 | **LOW** | **Variáveis de uma letra** (`u`, `e`, `p`, `cid`, `cc`) em API pública | `AppManager.js` 28–33 | Legibilidade e revisão de segurança piores. |
+| 7 | **LOW** | **`console.log` de dados sensíveis** em produção (`cardNumber`, chave de gateway) | `AppManager.js` 45 | PII/PCI em logs; impossibilita compliance sem rotação emergencial. |
 
 ### `task-manager-api` (Python / Flask + SQLAlchemy — Task Manager)
 
@@ -38,6 +40,7 @@ Para cada projeto foram identificados **pelo menos cinco** problemas, com **pelo
 | 4 | **MEDIUM** | **N+1 queries** ao montar lista de tasks (busca `User` e `Category` por item) | `routes/task_routes.py` 11–57 | Latência cresce linearmente com número de tasks. |
 | 5 | **MEDIUM** | **Lógica de apresentação e regras** (overdue, montagem de dict) na camada de rotas | `routes/task_routes.py`, `routes/user_routes.py` | Dificulta reuso e testes; mistura responsabilidades de controller/view. |
 | 6 | **LOW** | **`except:` sem tipo** e retorno genérico de erro | `task_routes.py` 62–63, 236–237 | Esconde falhas reais e dificulta observabilidade. |
+| 7 | **LOW** | **Token JWT fictício** (`fake-jwt-token-<id>`) retornado no login sem assinatura | `routes/user_routes.py` 207–211 | Falsa sensação de segurança; clientes assumem JWT real e não validam expiração/assinatura. |
 
 ---
 
@@ -99,42 +102,112 @@ Cada relatório contém **≥ 5 findings**, com **≥ 1 CRITICAL ou HIGH**, orde
 
 ### Validação local (logs)
 
-Comandos executados neste ambiente:
+Testes executados em 2026-05-13 (Windows 10, Python 3.12, Node.js 20):
 
 ```text
-# code-smells-project
-health 200 {'status': 'ok', ...}
-produtos 200 (10 itens)
+# code-smells-project — porta 5000
+GET /health  → 200 | {"status":"ok","database":"connected","counts":{"produtos":10,"usuarios":3,"pedidos":0},"versao":"1.0.0"}
+GET /produtos → 200 | 10 produtos retornados
+GET /usuarios → 200 | 3 usuários retornados
 
-# ecommerce-api-legacy (Node 20)
-GET /api/admin/financial-report 200 — JSON com cursos "Clean Architecture" e "Docker"
+# ecommerce-api-legacy — porta 3000
+GET /api/admin/financial-report → 200 | {"value":[{"course":"Clean Architecture","revenue":997},{"course":"Docker","revenue":0}],"Count":2}
+POST /api/checkout              → 200 | {"msg":"Sucesso","enrollment_id":2}
 
-# task-manager-api
-GET /health 200
-GET /tasks 200
+# task-manager-api — porta 5000
+GET  /health                        → 200 | {"status":"ok","timestamp":"2026-05-13 22:45:02"}
+POST /users                         → 201 | usuário criado com hash Werkzeug
+POST /tasks (priority: 2, int)      → 201 | task criada com user_name resolvido via joinedload
+POST /tasks (priority: "high", str) → 400 | {"error":"Prioridade deve ser um inteiro entre 1 e 5"} (fix aplicado)
+GET  /tasks                         → 200 | lista com campo "overdue" calculado
 ```
 
-### Checklist de validação (resumo)
+### Checklist de validação
 
-**code-smells-project**
+#### `code-smells-project`
 
-- [x] Fase 1: Python + Flask + SQLite corretos
-- [x] Fase 2: relatório com ≥5 findings e CRITICAL/HIGH
-- [x] Fase 3: MVC em `src/`, boot OK, `/health` e `/produtos` OK
-- [x] Confirmação humana documentada na skill (gate no `SKILL.md`)
+**Fase 1 — Análise**
+- [x] Linguagem detectada corretamente: Python
+- [x] Framework detectado corretamente: Flask 3.x
+- [x] Domínio descrito corretamente: API de e-commerce (produtos, usuários, pedidos)
+- [x] Número de arquivos analisados: 4 (app.py, controllers.py, models.py, database.py)
 
-**ecommerce-api-legacy**
+**Fase 2 — Auditoria**
+- [x] Relatório segue o template (blocos `===`, Summary, Findings)
+- [x] Cada finding tem arquivo e linhas exatos
+- [x] Findings ordenados CRITICAL → HIGH → MEDIUM → LOW
+- [x] Mínimo de 5 findings: 8 encontrados (CRITICAL:3, HIGH:2, MEDIUM:2, LOW:1)
+- [x] Detecção de APIs deprecated incluída (`datetime.utcnow()` — N/A no legado)
+- [x] Skill pausa e pede confirmação antes da Fase 3 (gate em `SKILL.md`)
 
-- [x] Fase 1: Node + Express + sqlite3
-- [x] Fase 2: relatório aceito
-- [x] Fase 3: serviços + rotas, relatório financeiro OK
-- [x] Tratamento de erro centralizado (`src/app.js`)
+**Fase 3 — Refatoração**
+- [x] Estrutura MVC: `src/config/`, `src/repositories/`, `src/views/`, `src/middleware/`
+- [x] Configuração em `src/config/settings.py` via `os.environ`; sem hardcoded
+- [x] Models/Repositories: `src/repositories/products.py`, `users.py`, `orders.py`
+- [x] Views/Routes: `src/views/routes.py` (Blueprints)
+- [x] Controllers: lógica de negócio nos repositories (sem SQL inline nas rotas)
+- [x] Error handling: `src/middleware/errors.py` com `@app.errorhandler`
+- [x] Entry point claro: `app.py` (composition root)
+- [x] Aplicação inicia sem erros: `GET /health → 200`
+- [x] Endpoints originais respondem: `/health`, `/produtos`, `/usuarios` → 200
 
-**task-manager-api**
+---
 
-- [x] Fase 1: Python + Flask + SQLAlchemy
-- [x] Fase 2: relatório aceito
-- [x] Fase 3: controllers + joinedload; `/health` e `/tasks` OK
+#### `ecommerce-api-legacy`
+
+**Fase 1 — Análise**
+- [x] Linguagem detectada corretamente: JavaScript (Node.js)
+- [x] Framework detectado corretamente: Express 4.x
+- [x] Domínio descrito corretamente: LMS com checkout de cursos e relatório financeiro
+- [x] Número de arquivos analisados: 3 principais (AppManager.js, utils.js, app.js)
+
+**Fase 2 — Auditoria**
+- [x] Relatório segue o template
+- [x] Cada finding tem arquivo e linhas exatos
+- [x] Findings ordenados CRITICAL → HIGH → MEDIUM → LOW
+- [x] Mínimo de 5 findings: 8 encontrados (CRITICAL:1, HIGH:3, MEDIUM:3, LOW:1)
+- [x] Detecção de APIs deprecated incluída (N/A — `req.param()` e `new Buffer()` não encontrados)
+- [x] Skill pausa e pede confirmação antes da Fase 3
+
+**Fase 3 — Refatoração**
+- [x] Estrutura MVC: `src/config.js`, `src/database.js`, `src/services/`, `src/routes.js`
+- [x] Configuração via `process.env`; sem segredos hardcoded
+- [x] Models: `src/database.js` com wrappers Promise (`dbGet`, `dbRun`, `dbAll`)
+- [x] Views/Routes: `src/routes.js` com handlers finos
+- [x] Controllers (serviços): `CheckoutService`, `ReportService`, `UserService`
+- [x] Error handling: middleware `(err, req, res, next)` em `src/app.js`
+- [x] Entry point claro: `src/app.js` (factory `buildApp`)
+- [x] Aplicação inicia sem erros: `Frankenstein LMS rodando na porta 3000`
+- [x] Endpoints originais respondem: `/api/admin/financial-report` e `/api/checkout` → 200
+
+---
+
+#### `task-manager-api`
+
+**Fase 1 — Análise**
+- [x] Linguagem detectada corretamente: Python
+- [x] Framework detectado corretamente: Flask + SQLAlchemy
+- [x] Domínio descrito corretamente: Task Manager (usuários, tasks, categorias)
+- [x] Número de arquivos analisados: ~15 arquivos fonte
+
+**Fase 2 — Auditoria**
+- [x] Relatório segue o template
+- [x] Cada finding tem arquivo e linhas exatos
+- [x] Findings ordenados CRITICAL → HIGH → MEDIUM → LOW
+- [x] Mínimo de 5 findings: 8 encontrados (CRITICAL:1, HIGH:2, MEDIUM:3, LOW:2)
+- [x] Detecção de APIs deprecated incluída (`datetime.utcnow()` — MEDIUM)
+- [x] Skill pausa e pede confirmação antes da Fase 3
+
+**Fase 3 — Refatoração**
+- [x] Estrutura MVC: `config.py`, `models/`, `routes/`, `controllers/`, `services/`
+- [x] Configuração em `config.py` via `python-dotenv`; sem hardcoded
+- [x] Models: `models/user.py` com Werkzeug hash; `models/task.py`, `models/category.py`
+- [x] Views/Routes: `routes/task_routes.py`, `routes/user_routes.py`, `routes/report_routes.py`
+- [x] Controllers: `controllers/task_controller.py` com `joinedload` e validações tipadas
+- [x] Error handling: handlers de exceção nos blueprints
+- [x] Entry point claro: `app.py` com `db.create_all()`
+- [x] Aplicação inicia sem erros: `GET /health → 200`
+- [x] Endpoints originais respondem: `/health`, `/tasks`, `/users` → 200
 
 ---
 
