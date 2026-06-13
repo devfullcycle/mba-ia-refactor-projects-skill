@@ -446,3 +446,97 @@ A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
 - **Projetos diferentes exigem adaptação** — a Fase 3 de um projeto já parcialmente organizado não vai ter as mesmas transformações de um monolito. Sua skill deve se adaptar ao contexto.
 - **Pedir confirmação na Fase 2 é obrigatório** — o humano deve revisar o relatório antes de qualquer modificação.
 - **Consulte as referências do curso** — revise a documentação oficial da ferramenta escolhida e os materiais das aulas para relembrar a estrutura e anatomia de uma skill.
+
+## Análise Manual
+
+Projetos:
+
+### `code-smells-project`
+
+O arquivo de models, concentra acesso ao banco, regras de pedido, montagem de respostas e cálculo de relatório.
+
+- **Crítica - Endpoint executa qualquer SQL recebido pela API**
+  Evidência: `code-smells-project/app.py:59-76`.
+  O endpoint `/admin/query` envia diretamente o campo `sql` para `cursor.execute()`, sem autenticação ou restrição de comandos. Qualquer cliente pode consultar, alterar ou apagar todo o banco. Esse endpoint não deveria existir em produção; precisa de autorização e operações previamente definidas.
+
+- **Crítica - Queries montadas por concatenação permitem SQL Injection**
+  Evidência: `code-smells-project/models.py:47-50`, `models.py:109-111` e `models.py:289-299`.
+  Os campos Nome, descrição, email, senha e filtros de busca entram diretamente no SQL. Além do risco de injeção de sql, uma simples aspa em um nome já pode quebrar a consulta. Todas essas consultas deveriam usar parâmetros.
+
+- **Alta - `models.py` virou um módulo central para todos os domínios**
+  Evidência: `code-smells-project/models.py:4-314`.
+  O mesmo arquivo cuida de produtos, usuários, autenticação, pedidos e relatórios. A função `criar_pedido`, por exemplo, valida estoque, calcula total, grava várias tabelas e atualiza produtos. Isso dificulta testes isolados e faz qualquer mudança atingir áreas sem relação direta. O ideal é separar os models por domínio e mover regras de negócio para services.
+
+- **Média - Listagem de pedidos faz consultas SQLs de forma excessiva**
+  Evidência: `code-smells-project/models.py:171-200` e `models.py:203-233`.
+  Para cada pedido é feita outra busca dos itens e, para cada item, uma nova busca do produto. Com o crescimento do banco, a quantidade de queries aumenta rapidamente. Uma consulta com `JOIN`, ou carregamento em lote, resolveria o problema.
+
+- **Média - Validação de produto está duplicada nos controllers**
+  Evidência: `code-smells-project/controllers.py:24-54` e `controllers.py:64-92`.
+  Criação e atualização repetem validações de campos obrigatórios, preço e estoque. As regras já começaram a divergir: a criação valida nome e categoria, enquanto a atualização não faz as mesmas verificações. Essa validação deveria ficar em um schema ou serviço reutilizado pelos dois fluxos.
+
+- **Baixa -  Regras e dados de configuração aparecem como valores soltos, poderíam ser enums ou constantes**
+  Evidência: `code-smells-project/controllers.py:52`, `models.py:256-262` e `controllers.py:285-289`.
+  Categorias, faixas de desconto, versão, ambiente e caminho do banco estão espalhados pelo código. Isso deixa mudanças simples mais trabalhosas e facilita inconsistências. Esses valores deveriam ter nomes claros e ficar em configuração ou constantes do domínio.
+
+- Não encontrei uma segunda na severidade baixa.
+
+### `ecommerce-api-legacy`
+
+- **Crítica - Credenciais e dados sensíveis estão expostos no código e nos logs**
+  Evidência: `ecommerce-api-legacy/src/utils.js:1-6` e `src/AppManager.js:43-46`.
+  Usuário e senha do banco, chave do gateway e conta SMTP estão em código. Durante o checkout, o número completo do cartão e a chave do gateway também são escritos no console. Segredos devem vir de variáveis de ambiente e dados de cartão nunca devem ser registradas.
+
+- **Crítica - Senhas usam uma função de hash insegura e previsível**
+  Evidência: `ecommerce-api-legacy/src/utils.js:17-22` e `src/AppManager.js:66-69`.
+  A função `badCrypto` repete Base64 e corta o resultado em dez caracteres, sem salt e sem resistência a ataques. O checkout ainda usa `123456` como senha padrão quando ela não é enviada. A senha precisa ser obrigatória e armazenada com uma função própria para senhas.
+
+- **Alta -  `AppManager` concentra todas as camadas da aplicação**
+  Evidência: `ecommerce-api-legacy/src/AppManager.js:4-138`.
+  A classe abre o banco, cria tabelas, registra endpoints, aplica regra de pagamento, grava auditoria e monta relatórios. É uma God Class e viola diretamente a separação esperada. Rotas, controllers, services e repositories precisam ser extraídos.
+
+- **Média - Checkout não usa transação**
+  Evidência: `ecommerce-api-legacy/src/AppManager.js:50-61`.
+  Matrícula, pagamento e log de auditoria são gravados em sequência, mas sem transação. Se o pagamento ou a auditoria falhar depois da matrícula, o banco fica parcialmente atualizado. As três operações deveriam confirmar ou desfazer juntas.
+
+- **Média - Relatório financeiro executa consultas excessivas e ignora erros internos**
+  Evidência: `ecommerce-api-legacy/src/AppManager.js:83-127`.
+  O relatório busca cursos, depois matrículas por curso e, dentro de cada matrícula, usuário e pagamento; e isso parece ser um fluxo confuso. Os callbacks internos também não tratam os erros recebidos. Um relatório maior fará muitas consultas e pode retornar dados incompletos sem sinalizar falha.
+
+- **Baixa - Nomes de variáveis**
+  Evidência: `ecommerce-api-legacy/src/AppManager.js:29-33`.
+  O nome das variáveis  `u`, `e`, `p`, `cid` e `cc` não fazem sentido.
+
+- **Baixa - Magic values na regra de aprovação**
+  Evidência: `ecommerce-api-legacy/src/AppManager.js:45-48`.
+  O pagamento é aprovado apenas quando o cartão começa com `"4"`. Mesmo sendo uma simulação, a regra deveria estar encapsulada no serviço de pagamento e ter um nome que explique o comportamento, em vez de ficar solta dentro da rota.
+
+### `task-manager-api`
+
+- **Crítica - Autenticação usa MD5 e devolve o hash da senha**
+  Evidência: `task-manager-api/models/user.py:16-32` e `routes/user_routes.py:185-210`.
+  MD5 não é muito bom para armazenar senhas. Além disso, o código devolve a senha do usuário em forma de hash. O token é apenas o texto seguido do id, sem assinatura ou expiração. A autenticação precisa usar hash próprio para senhas, remover o campo das respostas e emitir tokens verificáveis.
+
+- **Crítica - SMTP está hardcoded**
+  Evidência: `task-manager-api/app.py:11-13` e `services/notification_service.py:7-10`.
+  A chave da aplicação e a senha do email estão dentro do repositório e deveria estar separado em um .env/seriço externo como o vault.
+
+- **Alta -  Rotas executam regra de negócio e persistência diretamente**
+  Evidência: `task-manager-api/routes/task_routes.py:85-153`, `routes/user_routes.py:42-90` e `routes/report_routes.py:12-101`.
+  Os handlers validam entrada, consultam models, alteram entidades, controlam transações e montam respostas completas. Isso deixa os controllers longos e difíceis de testar sem Flask e banco. Services deveriam concentrar os casos de uso, deixando as rotas responsáveis apenas por HTTP.
+
+- **Média - Há consultas excessivas nas listagens e relatórios**
+  Evidência: `task-manager-api/routes/task_routes.py:14-58`, `routes/report_routes.py:53-67` e `routes/report_routes.py:157-164`.
+  A listagem de tarefas busca usuário e categoria para cada registro. Os relatórios também consultam tarefas por usuário e contagem por categoria dentro de loops. Relacionamentos carregados em lote e agregações no banco evitariam esse custo crescente.
+
+- **Média - Endpoints sem paginação**
+  Evidência: `task-manager-api/routes/task_routes.py:11-61`, `routes/task_routes.py:240-271` e `routes/user_routes.py:10-25`.
+  As rotas usam `.all()` e devolvem todos os registros. Com volume maior, a API passa a produzir respostas grandes podendo chegar em um limite ou a necessidade de gerenciar isso no front.
+
+- **Baixa - Regras de validação são repetidas apesar de já existirem helpers e constantes**
+  Evidência: `task-manager-api/routes/task_routes.py:96-114`, `routes/task_routes.py:166-205` e `utils/helpers.py:57-116`.
+  Tamanho do título, status, prioridade e parsing de data aparecem nas rotas, enquanto `process_task_data` e constantes equivalentes ficam sem uso. Centralizar essas regras reduziria divergências entre criação e atualização.
+
+- **Baixa - Imports sem uso e `except` genérico deixam o código mais difícil de manter**
+  Evidência: `task-manager-api/app.py:7`, `routes/task_routes.py:7`, `utils/helpers.py:3-7` e `utils/helpers.py:43-50`.
+  Há vários módulos importados sem necessidade e blocos que capturam qualquer erro sem registrar a causa.
