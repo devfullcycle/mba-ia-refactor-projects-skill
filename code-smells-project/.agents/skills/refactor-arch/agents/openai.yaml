@@ -1,0 +1,4 @@
+interface:
+  display_name: "Refatorar Arquitetura"
+  short_description: "Audita qualquer tecnologia e refatora para MVC"
+  default_prompt: "Use $refactor-arch para descobrir a tecnologia, auditar sem limitar-se ao catálogo e refatorar este projeto para MVC."
