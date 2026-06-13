@@ -4,7 +4,7 @@ from database import db
 from routes.task_routes import task_bp
 from routes.user_routes import user_bp
 from routes.report_routes import report_bp
-import os, sys, json, datetime
+import datetime
 
 app = Flask(__name__)
 
@@ -13,6 +13,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = 'super-secret-key-123'
 
 CORS(app)
+
 db.init_app(app)
 
 app.register_blueprint(task_bp)
