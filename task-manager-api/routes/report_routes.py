@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
+from sqlalchemy import func
 from database import db
 from models.task import Task
 from models.user import User
 from models.category import Category
 from datetime import datetime, timedelta
-from utils.helpers import format_date, calculate_percentage
-import json
+from utils.helpers import calculate_percentage
 
 report_bp = Blueprint('reports', __name__)
 
@@ -50,21 +50,26 @@ def summary_report():
         Task.updated_at >= seven_days_ago
     ).count()
 
+    user_task_counts = dict(
+        db.session.query(Task.user_id, func.count(Task.id))
+        .group_by(Task.user_id).all()
+    )
+    user_done_counts = dict(
+        db.session.query(Task.user_id, func.count(Task.id))
+        .filter(Task.status == 'done')
+        .group_by(Task.user_id).all()
+    )
     users = User.query.all()
     user_stats = []
     for u in users:
-        user_tasks = Task.query.filter_by(user_id=u.id).all()
-        total = len(user_tasks)
-        completed = 0
-        for t in user_tasks:
-            if t.status == 'done':
-                completed = completed + 1
+        total = user_task_counts.get(u.id, 0)
+        completed = user_done_counts.get(u.id, 0)
         user_stats.append({
             'user_id': u.id,
             'user_name': u.name,
             'total_tasks': total,
             'completed_tasks': completed,
-            'completion_rate': round((completed / total) * 100, 2) if total > 0 else 0
+            'completion_rate': calculate_percentage(completed, total),
         })
 
     report = {
