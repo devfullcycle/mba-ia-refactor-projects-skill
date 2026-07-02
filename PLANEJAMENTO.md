@@ -145,10 +145,10 @@ Arquivos obrigatórios:
 
 ## Etapa 6 — README.md final
 Seções obrigatórias:
-- [ ] Análise Manual
-- [ ] Construção da Skill
-- [ ] Resultados (antes/depois, checklist, prints/logs)
-- [ ] Como Executar
+- [x] Análise Manual
+- [x] Construção da Skill
+- [x] Resultados (antes/depois, checklist, prints/logs)
+- [x] Como Executar
 
 ## Etapa 7 — Entrega
 - [ ] Repositório público no GitHub (fork)
