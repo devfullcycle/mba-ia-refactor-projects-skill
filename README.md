@@ -446,3 +446,51 @@ A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
 - **Projetos diferentes exigem adaptação** — a Fase 3 de um projeto já parcialmente organizado não vai ter as mesmas transformações de um monolito. Sua skill deve se adaptar ao contexto.
 - **Pedir confirmação na Fase 2 é obrigatório** — o humano deve revisar o relatório antes de qualquer modificação.
 - **Consulte as referências do curso** — revise a documentação oficial da ferramenta escolhida e os materiais das aulas para relembrar a estrutura e anatomia de uma skill.
+
+---
+
+## Análise Manual
+
+Levantamento feito por leitura direta do código-fonte dos 3 projetos, antes da criação da skill. Cada achado indica arquivo(s) e linha(s) exatos.
+
+### code-smells-project (Python/Flask)
+
+| Severidade | Problema | Local | Por que é relevante |
+|---|---|---|---|
+| CRITICAL | SQL Injection generalizada (concatenação de string em todas as queries) | `models.py:28,47-50,57-61,68,109-111,126-129,140,174,279-280,289-297` | Nenhuma query usa parâmetros. O caso do login (`109-111`) permite bypass de autenticação e extração de dados só manipulando os campos `email`/`senha`. |
+| CRITICAL | Endpoint que executa SQL arbitrário sem autenticação | `app.py:59-78` | `/admin/query` recebe SQL bruto no corpo da requisição e executa via `cursor.execute()` sem validação, allowlist ou auth — controle total do banco por HTTP. |
+| CRITICAL | Senhas em texto plano, expostas via API | `database.py:27-34`, `models.py:105-120`, `controllers.py:128-134` | Não há hashing; `GET /usuarios` devolve a senha de todos os usuários em texto plano. |
+| HIGH | Segredos hardcoded expostos publicamente | `app.py:7-8`, `controllers.py:285-290` | `SECRET_KEY` e `debug` ficam visíveis no JSON de resposta de `/health`, acessível sem autenticação. |
+| HIGH | Endpoint destrutivo sem autenticação | `app.py:47-57` | `/admin/reset-db` apaga produtos, usuários e pedidos via POST simples, sem token nem confirmação. |
+| MEDIUM | Queries N+1 ao montar pedidos | `models.py:171-233` | `get_pedidos_usuario`/`get_todos_pedidos` abrem um cursor novo por item e por produto dentro de loops aninhados, em vez de um JOIN. |
+| MEDIUM | Duplicação de validação entre criar e atualizar produto | `controllers.py:24-96` | As mesmas ~15 linhas de validação estão copiadas entre `criar_produto` e `atualizar_produto`. |
+| LOW | Uso de `print()` para logging | `controllers.py:8,11,57,61,106,161,179,182,208-210,248,250` | Não há logging estruturado; erros e auditoria vão para stdout sem nível ou timestamp. |
+| LOW | Listas de valores válidos hardcoded e duplicadas | `controllers.py:52,242` | Categorias e status são listas literais dentro da função; alterar um valor exige editar múltiplos pontos. |
+
+### ecommerce-api-legacy (Node.js/Express)
+
+| Severidade | Problema | Local | Por que é relevante |
+|---|---|---|---|
+| CRITICAL | Segredos hardcoded no código-fonte | `src/utils.js:1-7` | Senha de banco, chave de gateway de pagamento (`pk_live_...`) e credencial SMTP versionadas em texto plano. |
+| CRITICAL | Hash de senha customizado e inseguro | `src/utils.js:17-23`, usado em `src/AppManager.js:68` | `badCrypto()` não é um hash criptográfico real (repete base64 do valor original 10.000x e trunca) — reversível e sem salt. |
+| HIGH | God Class concentrando DB, seed, rotas e regras de negócio | `src/AppManager.js:1-141` | Uma única classe cria conexão, schema, dados de seed e implementa todos os handlers HTTP — impossível testar em isolamento. |
+| HIGH | Pirâmide de callbacks com tratamento de erro incompleto | `src/AppManager.js:28-129` | `/api/checkout` e `/api/admin/financial-report` aninham até 5 níveis de callback; vários `err` são ignorados (ex: linhas 92, 104-106). |
+| HIGH | Estado global mutável compartilhado entre requisições | `src/utils.js:9-10` | `globalCache` e `totalRevenue` são variáveis de módulo mutáveis, sem encapsulamento nem escopo por requisição. |
+| MEDIUM | Queries N+1 no relatório financeiro | `src/AppManager.js:83-127` | Uma query por curso, outra por matrícula e outra por pagamento dentro de loops aninhados, em vez de um JOIN. |
+| MEDIUM | Exclusão de usuário deixa dados órfãos | `src/AppManager.js:131-137` | `DELETE /api/users/:id` remove o usuário mas não as matrículas/pagamentos associados — o próprio comentário no código admite isso. |
+| LOW | Nomes de variáveis não descritivos | `src/AppManager.js:29-33` | `u, e, p, cid, cc` dificultam entender o payload do checkout sem ler a lógica inteira. |
+| LOW | Respostas de erro inconsistentes | `src/AppManager.js` (várias linhas) | Mistura `res.send()` com texto puro e `res.status().json()`, sem contrato de API único. |
+
+### task-manager-api (Python/Flask, parcialmente organizado)
+
+| Severidade | Problema | Local | Por que é relevante |
+|---|---|---|---|
+| CRITICAL | Ausência total de autenticação/autorização nas rotas | `routes/task_routes.py` (todas), `routes/user_routes.py` (exceto `/login`), `routes/report_routes.py` (todas) | Existe um endpoint de login, mas nenhuma rota valida o token gerado — qualquer requisição HTTP acessa e altera dados de qualquer usuário. |
+| CRITICAL | Hash de senha com MD5 sem salt (API/prática criptográfica obsoleta) | `models/user.py:27-32` | MD5 é quebrado para uso em senhas (rainbow tables); deveria usar `werkzeug.security.generate_password_hash` ou bcrypt. |
+| CRITICAL | Credenciais hardcoded no código-fonte | `app.py:13`, `services/notification_service.py:9-10` | `SECRET_KEY` e credenciais SMTP completas (usuário/senha) versionadas em texto plano. |
+| HIGH | Token de sessão falso e previsível | `routes/user_routes.py:210` | `'fake-jwt-token-' + user.id` não é assinado nem expira — mesmo que fosse validado, é trivialmente forjável. |
+| HIGH | Lógica de negócio duplicada nas rotas em vez de reaproveitar o model | `task_routes.py:30-39,71-80`, `user_routes.py:171-180`, `report_routes.py:33-43,132-135` | O cálculo de "overdue" é copiado manualmente 5 vezes, ignorando `Task.is_overdue()` já existente em `models/task.py:50-60`. |
+| MEDIUM | Queries N+1 nos relatórios | `routes/report_routes.py:53-68,161-164` | Uma query de tasks por usuário e uma contagem por categoria dentro de loops, em vez de agregação única. |
+| MEDIUM | Hash de senha exposto nas respostas da API | `models/user.py:16-25`, retornado em `routes/user_routes.py:85-86,129` | `to_dict()` inclui o campo `password`; mesmo hasheado, não deveria ser serializado. |
+| LOW | `except` genéricos escondem erros | `routes/task_routes.py:62`, `routes/user_routes.py:130,149,207` | `except:` bare captura qualquer exceção sem log detalhado, dificultando debugging. |
+| LOW | Imports não utilizados | `routes/task_routes.py:7`, `routes/report_routes.py:8` | `os, sys, time` e `json` importados e nunca usados. |

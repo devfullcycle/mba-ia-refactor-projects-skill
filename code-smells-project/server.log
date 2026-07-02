@@ -1,0 +1,30 @@
+2026-07-02 13:23:24,047 - __main__ - INFO - ==================================================
+2026-07-02 13:23:24,047 - __main__ - INFO - SERVIDOR INICIADO
+2026-07-02 13:23:24,047 - __main__ - INFO - Rodando em http://localhost:5000
+2026-07-02 13:23:24,047 - __main__ - INFO - ==================================================
+ * Serving Flask app 'app'
+ * Debug mode: off
+2026-07-02 13:23:24,083 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.3.185:5000
+2026-07-02 13:23:24,083 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-07-02 13:23:28,193 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:28] "GET /health HTTP/1.1" 200 -
+2026-07-02 13:23:31,063 - controllers.usuario - INFO - Login bem-sucedido: admin@loja.com
+2026-07-02 13:23:31,064 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:31] "POST /login HTTP/1.1" 200 -
+2026-07-02 13:23:38,977 - services.notificacao - INFO - Pedido 1 criado para usuário 2
+2026-07-02 13:23:38,977 - services.notificacao - INFO - Enviando email de confirmação para usuário 2
+2026-07-02 13:23:38,977 - services.notificacao - INFO - Enviando SMS: Seu pedido foi recebido!
+2026-07-02 13:23:38,977 - services.notificacao - INFO - Enviando notificação push: Novo pedido recebido
+2026-07-02 13:23:38,977 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:38] "[35m[1mPOST /pedidos HTTP/1.1[0m" 201 -
+2026-07-02 13:23:42,878 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:42] "GET /pedidos/usuario/2 HTTP/1.1" 200 -
+2026-07-02 13:23:49,576 - services.notificacao - INFO - Pedido 1 foi aprovado
+2026-07-02 13:23:49,577 - services.notificacao - INFO - Iniciando preparação de envio para pedido 1
+2026-07-02 13:23:49,577 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:49] "PUT /pedidos/1/status HTTP/1.1" 200 -
+2026-07-02 13:23:53,369 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:53] "GET /relatorios/vendas HTTP/1.1" 200 -
+2026-07-02 13:23:57,876 - controllers.produto - INFO - Produto criado com ID: 11
+2026-07-02 13:23:57,877 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:23:57] "[35m[1mPOST /produtos HTTP/1.1[0m" 201 -
+2026-07-02 13:24:01,391 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:24:01] "GET /produtos/busca?q=Monitor HTTP/1.1" 200 -
+2026-07-02 13:26:09,371 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:26:09] "[33mPOST /admin/query HTTP/1.1[0m" 404 -
+2026-07-02 13:26:16,046 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:26:16] "[33mPOST /admin/reset-db HTTP/1.1[0m" 404 -
+2026-07-02 13:26:19,008 - werkzeug - INFO - 127.0.0.1 - - [02/Jul/2026 13:26:19] "GET /health HTTP/1.1" 200 -
