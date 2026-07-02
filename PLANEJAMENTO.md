@@ -8,7 +8,7 @@
 - [x] Etapa 2: Criação da skill
 - [x] Etapa 3: Execução projeto 1 (code-smells-project)
 - [ ] Etapa 4: Execução projeto 2 (ecommerce-api-legacy)
-- [ ] Etapa 5: Execução projeto 3 (task-manager-api)
+- [x] Etapa 5: Execução projeto 3 (task-manager-api)
 - [ ] Etapa 6: README final
 - [ ] Etapa 7: Push no fork
 
@@ -107,41 +107,41 @@ Arquivos obrigatórios:
 
 ## Etapa 5 — Projeto 3 (task-manager-api)
 ### Execução
-- [ ] Copiar .claude/skills/refactor-arch/ para task-manager-api/.claude/skills/
-- [ ] cd ../task-manager-api
-- [ ] claude "/refactor-arch"
+- [x] Copiar .claude/skills/refactor-arch/ para task-manager-api/.claude/skills/
+- [x] cd ../task-manager-api
+- [x] claude "/refactor-arch"
 
 ### Validação Fase 1
-- [ ] Linguagem detectada: Python ✓
-- [ ] Framework detectado: Flask ✓
-- [ ] Domínio descrito corretamente (Task Manager) ✓
-- [ ] Número de arquivos analisados correto ✓
-- [ ] Arquitetura parcialmente organizada detectada corretamente ✓
+- [x] Linguagem detectada: Python ✓
+- [x] Framework detectado: Flask ✓
+- [x] Domínio descrito corretamente (Task Manager) ✓
+- [x] Número de arquivos analisados correto ✓
+- [x] Arquitetura parcialmente organizada detectada corretamente ✓
 
 ### Validação Fase 2
-- [ ] Relatório segue template definido ✓
-- [ ] >= 5 findings encontrados (mesmo em código parcialmente organizado) ✓
-- [ ] >= 1 CRITICAL ou HIGH identificado ✓
-- [ ] Findings ordenados por severidade (CRITICAL → LOW) ✓
-- [ ] Cada finding tem arquivo e linhas exatas ✓
-- [ ] Detecção de APIs deprecated incluída (se aplicável) ✓
-- [ ] Skill pausa e pede confirmação explícita ✓
+- [x] Relatório segue template definido ✓
+- [x] >= 5 findings encontrados (mesmo em código parcialmente organizado) ✓ — 11 findings (2 CRITICAL, 1 HIGH, 4 MEDIUM, 4 LOW)
+- [x] >= 1 CRITICAL ou HIGH identificado ✓
+- [x] Findings ordenados por severidade (CRITICAL → LOW) ✓
+- [x] Cada finding tem arquivo e linhas exatas ✓
+- [x] Detecção de APIs deprecated incluída (se aplicável) ✓ — MD5 para senha, datetime.utcnow()
+- [x] Skill pausa e pede confirmação explícita ✓
 
 ### Validação Fase 3
-- [ ] Estrutura de diretórios melhorada mantendo organização existente ✓
-- [ ] Configuração extraída para módulo de config (sem hardcoded) ✓
-- [ ] Models separados e sem lógica de negócio extra ✓
-- [ ] Routes limpas, sem lógica de negócio ✓
-- [ ] Controllers consolidam fluxo da aplicação ✓
-- [ ] Services com responsabilidades bem definidas ✓
-- [ ] Error handling centralizado ✓
-- [ ] Entry point claro ✓
-- [ ] Aplicação inicia sem erros ✓
-- [ ] Endpoints originais respondem corretamente ✓
+- [x] Estrutura de diretórios melhorada mantendo organização existente ✓ — models/, routes/, services/, utils/ preservados; adicionados config/ e middlewares/
+- [x] Configuração extraída para módulo de config (sem hardcoded) ✓ — config/settings.py
+- [x] Models separados e sem lógica de negócio extra ✓
+- [x] Routes limpas, sem lógica de negócio ✓ — overdue delegado a Task.is_overdue()
+- [x] Controllers consolidam fluxo da aplicação ✓ — handlers dos blueprints atuam como controllers (idiomático em Flask), sem SQL/regra de negócio direto
+- [x] Services com responsabilidades bem definidas ✓ — notification_service usa config, sem credenciais hardcoded
+- [x] Error handling centralizado ✓ — middlewares/error_handler.py
+- [x] Entry point claro ✓ — app.py
+- [x] Aplicação inicia sem erros ✓
+- [x] Endpoints originais respondem corretamente ✓ — validado com curl (health, /, tasks CRUD+search+stats, users CRUD, login, users/:id/tasks, reports/summary, reports/user/:id, categories CRUD)
 
 ### Pós-execução
-- [ ] Salvar reports/audit-project-3.md
-- [ ] git commit
+- [x] Salvar reports/audit-project-3.md
+- [x] git commit
 
 ## Etapa 6 — README.md final
 Seções obrigatórias:
