@@ -103,7 +103,7 @@ Arquivos obrigatórios:
 
 ### Pós-execução
 - [x] Salvar reports/audit-project-2.md
-- [ ] git commit
+- [x] git commit
 
 ## Etapa 5 — Projeto 3 (task-manager-api)
 ### Execução
