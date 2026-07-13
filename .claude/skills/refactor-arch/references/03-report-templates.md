@@ -142,18 +142,31 @@ Validation
 - A árvore em `New Project Structure` deve refletir os arquivos realmente criados, com uma nota
   curta entre parênteses nos pontos-chave quando ajudar (ex.: `app.py (composition root)`).
 
-**Exemplo de árvore (Python/Flask):**
+**Exemplo de árvore (Python/Flask — camadas na raiz, sem `src/`):**
+```
+config/settings.py
+models/
+├── produto_model.py
+└── usuario_model.py
+views/
+└── routes.py
+controllers/
+├── produto_controller.py
+└── pedido_controller.py
+middlewares/error_handler.py
+app.py (composition root)
+```
+
+**Exemplo de árvore (Node.js/Express — usa `src/`):**
 ```
 src/
-├── config/settings.py
+├── config/index.js
 ├── models/
-│   ├── produto_model.py
-│   └── usuario_model.py
-├── views/
-│   └── routes.py
+│   └── course.js
+├── routes/
+│   └── checkout.routes.js
 ├── controllers/
-│   ├── produto_controller.py
-│   └── pedido_controller.py
-├── middlewares/error_handler.py
-└── app.py (composition root)
+│   └── checkout.controller.js
+├── middlewares/errorHandler.js
+└── app.js (composition root)
 ```

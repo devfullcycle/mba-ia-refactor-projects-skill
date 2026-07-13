@@ -451,10 +451,18 @@ A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
 
 ## Análise Manual
 
-Análise feita lendo o código-fonte dos três projetos. Para cada projeto os achados
-estão ordenados do **mais crítico ao menos crítico**. A classificação segue a escala de
-severidades definida na seção *Contexto* deste README (CRITICAL / HIGH / MEDIUM / LOW).
-O foco é o impacto arquitetural e de segurança — não é uma lista exaustiva.
+Análise feita **manualmente**, lendo o código-fonte legado dos três projetos antes de
+qualquer refatoração. Para cada projeto esta seção entrega:
+
+1. **Lista dos problemas identificados** — com arquivo e linha exatos do código original.
+2. **Classificação por severidade** — segundo a escala definida na seção *Contexto*
+   (CRITICAL / HIGH / MEDIUM / LOW), sinalizada na tag de cada achado e resumida na tabela abaixo.
+3. **Justificativa de relevância** — o campo **"Por que importa"** em cada item explica o
+   impacto (segurança, arquitetura, integridade de dados ou manutenibilidade) e por que ele
+   merece aquela severidade.
+
+Os achados de cada projeto estão ordenados do **mais crítico ao menos crítico**. O foco é o
+impacto arquitetural e de segurança — não é uma lista exaustiva.
 
 | Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW |
 |---|---|:-:|:-:|:-:|:-:|

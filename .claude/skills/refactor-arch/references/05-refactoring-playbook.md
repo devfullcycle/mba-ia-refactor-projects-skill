@@ -179,7 +179,7 @@ A aplicação **não pode quebrar**. Prove que funciona:
    - Python: `pip install -r requirements.txt` (idealmente num venv).
    - Node: `npm install`.
 2. **Suba o servidor** em background e aguarde ele ficar pronto:
-   - Python/Flask: `python app.py` (ou `python src/app.py`) — porta detectada na Fase 1 (ex.: 5000).
+   - Python/Flask: `python app.py` (na raiz do projeto — Python **não** usa `src/`) — porta detectada na Fase 1 (ex.: 5000).
    - Node/Express: `npm start` ou `node src/app.js` — porta detectada (ex.: 3000).
 3. **Exercite todos os endpoints originais** com requisições HTTP reais (`curl` ou similar):
    - Use as rotas mapeadas na Fase 1 e, se existir, o arquivo `api.http` do projeto.
@@ -192,6 +192,57 @@ A aplicação **não pode quebrar**. Prove que funciona:
 > Dica: rode o servidor com `run_in_background`, capture o log de boot para confirmar que subiu sem
 > stack trace, faça as chamadas, e então encerre o processo. Se a app usa banco in-memory, o seed
 > roda no boot — valide contra os dados semeados.
+
+### Evidência de validação (obrigatória — salvar em arquivo)
+
+A validação **não pode depender só da palavra do agente**. Capture as saídas reais e salve um
+relatório de evidência em `reports/validation-project-<N>.md`, usando **o mesmo `<N>`** do relatório
+de auditoria gerado para este projeto na Fase 2 (pareia `audit-project-<N>.md` ↔
+`validation-project-<N>.md`, na mesma pasta `reports/` da raiz do repo — mesma regra de caminho da
+Fase 2).
+
+Registre no arquivo os **comandos reais executados e suas saídas reais** (não invente): o comando de
+boot com o trecho do log que prova que o servidor subiu, e, para cada endpoint, a requisição feita
+(método, path, payload) com o **status HTTP e um trecho da resposta** de fato retornados.
+
+Template do arquivo de evidência:
+
+```
+================================
+VALIDATION EVIDENCE — <nome do projeto>
+================================
+Date:  <data/hora>
+Stack: <linguagem + framework>
+Port:  <porta usada na validação>
+
+## Boot
+$ <comando de instalação de deps>
+$ <comando de boot>
+[log] <linha(s) do log que provam o boot sem stack trace>
+Boot: ✓ OK
+
+## Endpoints
+| Método | Path                         | Payload         | Status | Esperado | OK |
+|--------|------------------------------|-----------------|--------|----------|----|
+| GET    | /produtos                    | —               | 200    | 200      | ✓  |
+| POST   | /login                       | {email,senha}   | 200    | 200      | ✓  |
+| ...    | ...                          | ...             | ...    | ...      | .. |
+
+## Amostras de resposta (trechos reais)
+- GET /produtos → 200 : <primeiros itens/campos retornados>
+- POST /login   → 200 : <corpo/trecho retornado>
+
+================================
+RESULT: <PASS | FAIL> (<passaram>/<total> endpoints)
+================================
+```
+
+Regras:
+- O `RESULT` reflete o resultado **real**. Se algum endpoint falhou, `FAIL` — e a Fase 3 não está
+  concluída (corrija e revalide, regerando a evidência).
+- Se um status "de erro" é o esperado (ex.: `401` num endpoint admin agora protegido), marque `OK`
+  na coluna comparando com a coluna `Esperado`, não com `200`.
+- Este arquivo é o comprovante auditável de que a app funciona após o refactor.
 
 ---
 

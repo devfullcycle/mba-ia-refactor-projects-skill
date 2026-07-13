@@ -34,6 +34,7 @@ Carregue cada um **no início da fase correspondente** (não tente segurar tudo 
 | `references/03-report-templates.md` | Fases 1, 2, 3 | Templates de saída **a serem seguidos à risca** |
 | `references/04-mvc-guidelines.md` | Fases 2 e 3 | Regras do MVC-alvo (camadas e responsabilidades) |
 | `references/05-refactoring-playbook.md` | Fase 3 | Transformações antes/depois + loop de correção + validação |
+| `references/06-validation-checklist.md` | Fim de cada fase | Auto-verificação interna (silenciosa; só se manifesta em falha) |
 
 Os templates de saída não são opcionais nem "aproximados": reproduza a estrutura, os rótulos, a
 ordem das seções e os separadores (`====`) **exatamente** como em `03-report-templates.md`.
@@ -52,8 +53,11 @@ ordem das seções e os separadores (`====`) **exatamente** como em `03-report-t
    arquitetura atual (resumo de 1 linha), nº de arquivos-fonte, tabelas do banco.
 4. Imprima o bloco **`PHASE 1: PROJECT ANALYSIS`** exatamente como o template.
    Campos sem valor no projeto são **omitidos** (não imprima "N/A").
+5. **Auto-validação (interna e silenciosa):** rode o checklist da Fase 1 de
+   `references/06-validation-checklist.md`. Se tudo passar, não imprima nada. Se algo falhar,
+   sinalize e **corrija antes de avançar**.
 
-Depois de imprimir, siga direto para a Fase 2.
+Depois, siga direto para a Fase 2.
 
 ---
 
@@ -65,6 +69,8 @@ avaliar aderência a MVC, gerar o relatório e **pedir confirmação**.
 1. Leia `references/02-antipattern-catalog.md` e `references/04-mvc-guidelines.md`.
 2. Audite o projeto inteiro procurando: falhas de arquitetura, falhas de segurança, problemas de
    qualidade, concorrência, bugs, anti-patterns, violações de SOLID **e violações de MVC**.
+   Uma auditoria completa nos projetos-alvo deve resultar em **pelo menos 5 findings**; se você
+   encontrou menos, provavelmente a análise foi rasa — revise o catálogo inteiro e a aderência a MVC.
 3. Para cada problema, produza um finding com **arquivo e linhas exatas**, descrição, impacto e
    recomendação, classificado como CRITICAL / HIGH / MEDIUM / LOW (critérios em
    `02-antipattern-catalog.md`).
@@ -80,7 +86,10 @@ avaliar aderência a MVC, gerar o relatório e **pedir confirmação**.
        olhando os `audit-project-*.md` já existentes em `reports/` (começa em 1).
      - Se não houver repositório git acima, use `./reports/` no próprio projeto.
      - Crie a pasta `reports/` se não existir.
-7. **PARE e peça confirmação** antes de tocar em qualquer arquivo:
+7. **Auto-validação (interna e silenciosa):** rode o checklist da Fase 2 de
+   `references/06-validation-checklist.md` (inclui "mínimo de 5 findings"). Se tudo passar, não
+   imprima nada. Se algo falhar, corrija o relatório **antes** de exibir o gate de confirmação.
+8. **PARE e peça confirmação** antes de tocar em qualquer arquivo:
 
    ```
    Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]
@@ -100,7 +109,8 @@ continua funcionando. **Só execute após a confirmação do usuário.**
 2. Use como **input o relatório salvo na Fase 2** (`reports/audit-project-<N>.md`). Cada finding
    listado ali precisa ser endereçado.
 3. Reestruture para as camadas MVC-alvo (config, models, views/routes, controllers, middlewares,
-   entrypoint), adaptando o **layout à convenção da linguagem** (ver `04-mvc-guidelines.md`).
+   entrypoint), adaptando o **layout à convenção da linguagem** (ver `04-mvc-guidelines.md`):
+   **Python fica na raiz do projeto (sem `src/`)**; **Node.js usa `src/`**.
    **Preserve os contratos externos** — mesmos paths, métodos HTTP, formato de resposta e schema
    de dados. As mudanças são internas.
 4. **Loop de correção controlado (máximo de 3 iterações):**
@@ -115,13 +125,19 @@ continua funcionando. **Só execute após a confirmação do usuário.**
    - Inicie o servidor num processo em background.
    - Faça requisições HTTP reais a **todos os endpoints originais** e confirme que respondem.
    - Encerre o servidor.
-   - Detalhes e comandos por stack em `references/05-refactoring-playbook.md`.
+   - **Salve a evidência** das saídas reais (log de boot + status/resposta de cada endpoint) em
+     `reports/validation-project-<N>.md` (mesmo `<N>` da auditoria) — é o comprovante auditável de
+     que a app funciona. Template e regras em `references/05-refactoring-playbook.md`.
 6. Imprima o bloco **`PHASE 3: REFACTORING COMPLETE`** com a nova estrutura de diretórios e o bloco
    `Validation`. A linha de anti-patterns deve **refletir o estado real**:
    - `✓ Zero anti-patterns remaining` se o loop resolveu tudo, ou
    - `⚠ <N> findings remaining after 3 loops:` com a lista, se sobrou algo.
    `Application boots without errors` e `All endpoints respond correctly` **têm que passar** em
    qualquer caso — não marque como concluído com a aplicação quebrada.
+7. **Auto-validação (interna e silenciosa):** rode o checklist da Fase 3 de
+   `references/06-validation-checklist.md`. Se algum item falhar (ex.: app não sobe, endpoint não
+   responde, camada MVC faltando, Python indevidamente em `src/`), **corrija e revalide** antes de
+   dar a fase por concluída. No caminho feliz, não imprima o checklist.
 
 ---
 

@@ -48,18 +48,22 @@ Response ← Route (view) ← Controller ← Model/Service
 
 ## Layout por stack (mesmas camadas, idioma diferente)
 
-**Python / Flask:**
+> **Regra de layout por linguagem:** o **Python NÃO usa pasta `src/`** — as camadas ficam direto
+> na raiz do projeto, com o `app.py` na raiz (idiomático em Flask; é como o `task-manager-api` já
+> organiza `models/`, `routes/`, `services/`). O **Node.js usa `src/`** por convenção do ecossistema.
+
+**Python / Flask** (camadas na raiz do projeto — **sem `src/`**):
 ```
-src/
+<raiz do projeto>/
 ├── config/settings.py          # config + segredos via os.environ
 ├── models/<entidade>_model.py  # dados + regra por domínio
 ├── views/routes.py             # blueprints / mapeamento de rotas
 ├── controllers/<dominio>_controller.py
 ├── middlewares/error_handler.py
-└── app.py                      # composition root (create_app)
+└── app.py                      # composition root (create_app), na raiz
 ```
 
-**Node.js / Express:**
+**Node.js / Express** (usa `src/`):
 ```
 src/
 ├── config/index.js             # config + segredos via process.env
