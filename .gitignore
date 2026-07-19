@@ -10,3 +10,6 @@ venv/
 # SQLite
 *.db
 instance/
+
+# Diário de decisões (notas internas de trabalho, não faz parte do entregável)
+DECISIONS.md
