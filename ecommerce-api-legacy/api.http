@@ -24,8 +24,10 @@ Content-Type: application/json
   "card": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
+### Relatório financeiro administrativo (rota protegida — exige token de admin)
 GET {{baseUrl}}/api/admin/financial-report
+x-admin-token: dev-admin-token
 
-### Deletar usuário
+### Deletar usuário (rota protegida — exige token de admin)
 DELETE {{baseUrl}}/api/users/1
+x-admin-token: dev-admin-token
