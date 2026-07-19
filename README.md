@@ -446,3 +446,383 @@ A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
 - **Projetos diferentes exigem adaptação** — a Fase 3 de um projeto já parcialmente organizado não vai ter as mesmas transformações de um monolito. Sua skill deve se adaptar ao contexto.
 - **Pedir confirmação na Fase 2 é obrigatório** — o humano deve revisar o relatório antes de qualquer modificação.
 - **Consulte as referências do curso** — revise a documentação oficial da ferramenta escolhida e os materiais das aulas para relembrar a estrutura e anatomia de uma skill.
+
+---
+
+## Análise Manual
+
+Análise feita **manualmente**, lendo o código-fonte legado dos três projetos antes de
+qualquer refatoração. Para cada projeto esta seção entrega:
+
+1. **Lista dos problemas identificados** — com arquivo e linha exatos do código original.
+2. **Classificação por severidade** — segundo a escala definida na seção *Contexto*
+   (CRITICAL / HIGH / MEDIUM / LOW), sinalizada na tag de cada achado e resumida na tabela abaixo.
+3. **Justificativa de relevância** — o campo **"Por que importa"** em cada item explica o
+   impacto (segurança, arquitetura, integridade de dados ou manutenibilidade) e por que ele
+   merece aquela severidade.
+
+Os achados de cada projeto estão ordenados do **mais crítico ao menos crítico**. O foco é o
+impacto arquitetural e de segurança — não é uma lista exaustiva.
+
+| Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW |
+|---|---|:-:|:-:|:-:|:-:|
+| code-smells-project | Python / Flask | 4 | 1 | 2 | 2 |
+| ecommerce-api-legacy | Node.js / Express | 3 | 2 | 2 | 2 |
+| task-manager-api | Python / Flask | 2 | 1 | 3 | 2 |
+
+### Projeto 1 — `code-smells-project/` (Python / Flask — API de E-commerce)
+
+#### [CRITICAL] SQL Injection generalizado
+**Arquivo:** `models.py` (ex.: `:28`, `:47-50`, `:109-111`, `:140`, `:289-297`)
+Todas as queries são montadas por concatenação de strings com dados do usuário, sem
+parâmetros vinculados. Em `login_usuario` (`:109-111`) o payload
+`' OR '1'='1` já derruba a autenticação. **Por que importa:** permite ler/alterar/apagar
+qualquer dado e burlar login — a falha de segurança mais grave e mais espalhada do projeto.
+
+#### [CRITICAL] Endpoint de execução arbitrária de SQL
+**Arquivo:** `app.py:59-78` (`POST /admin/query`)
+A rota executa qualquer SQL enviado no corpo da requisição, sem autenticação. **Por que
+importa:** é um backdoor de comprometimento total do banco exposto na API pública.
+
+#### [CRITICAL] Senhas em texto puro e expostas na resposta
+**Arquivo:** `database.py:76-78`, `models.py:83` e `:99`
+As senhas são gravadas em claro (seed) e devolvidas no JSON de `GET /usuarios`; o login
+compara texto puro. **Por que importa:** vaza credenciais de todos os usuários e viola
+qualquer requisito mínimo de proteção de dados.
+
+#### [CRITICAL] Segredos hardcoded e vazados pela API
+**Arquivo:** `app.py:7-8` e `controllers.py:289`
+`SECRET_KEY` fixa no código, `DEBUG=True` em "produção" (`app.py:88`) e o `/health`
+devolve a própria `secret_key` no JSON. **Por que importa:** o segredo da aplicação está
+versionado e ainda é servido a qualquer cliente; o modo debug expõe stack traces e o
+console interativo do Werkzeug.
+
+#### [HIGH] Estado global de conexão + God module + admin sem proteção
+**Arquivo:** `database.py:4,10`; `models.py` (arquivo inteiro); `app.py:47-57`
+Conexão SQLite global compartilhada entre threads (`check_same_thread=False`), um único
+módulo `models.py` misturando acesso a dados e regra de negócio (ex.: cálculo de desconto
+em `relatorio_vendas`), e `POST /admin/reset-db` apagando todas as tabelas sem auth. **Por
+que importa:** acopla tudo, quebra o isolamento de camadas exigido pelo MVC e torna testes
+unitários praticamente impossíveis.
+
+#### [MEDIUM] Queries N+1 na listagem de pedidos
+**Arquivo:** `models.py:187-199` e `:219-231`
+Para cada pedido abre-se um cursor por item e mais um por produto. **Por que importa:** o
+número de queries cresce linearmente com itens/pedidos, virando gargalo de performance.
+
+#### [MEDIUM] Validação duplicada e efeito colateral no controller
+**Arquivo:** `controllers.py:24-96` e `:208-210`
+As mesmas validações se repetem entre `criar_produto` e `atualizar_produto`, e o envio de
+notificações é feito com `print` dentro do controller de pedido. **Por que importa:**
+duplicação dificulta manutenção e mistura responsabilidades (validação + notificação) na
+camada errada.
+
+#### [LOW] `print()` usado como mecanismo de log
+**Arquivo:** `controllers.py:8,11,57,106,...`
+Sem níveis, timestamp ou destino configurável. **Por que importa:** dificulta observar a
+aplicação em produção; o certo é o módulo `logging`.
+
+#### [LOW] Magic numbers na regra de desconto
+**Arquivo:** `models.py:256-262`
+Faixas `10000/5000/1000` e taxas `0.1/0.05/0.02` soltas no código. **Por que importa:**
+regra de negócio ilegível e difícil de ajustar; deveria estar em constantes nomeadas.
+
+### Projeto 2 — `ecommerce-api-legacy/` (Node.js / Express — LMS com checkout)
+
+#### [CRITICAL] Credenciais de produção hardcoded
+**Arquivo:** `src/utils.js:1-7`
+Senha do banco, chave **live** do gateway de pagamento (`pk_live_...`) e usuário SMTP no
+código. **Por que importa:** segredos de produção versionados — vazam no repositório e
+permitem cobrar cartões e acessar a infraestrutura real.
+
+#### [CRITICAL] Número de cartão e chave do gateway logados
+**Arquivo:** `src/AppManager.js:45`
+`console.log` imprime o número completo do cartão e a chave live a cada checkout. **Por que
+importa:** violação direta de PCI-DSS; dados de cartão nunca podem ir para logs.
+
+#### [CRITICAL] Hash de senha quebrado
+**Arquivo:** `src/utils.js:17-23` e `src/AppManager.js:68`
+`badCrypto` é determinístico, sem salt e truncado a 10 caracteres; o cadastro ainda usa
+`"123456"` como senha padrão. **Por que importa:** não é hash de verdade — senhas são
+trivialmente reversíveis/colidíveis e contas nascem com senha conhecida.
+
+#### [HIGH] God Class `AppManager` + banco in-memory volátil
+**Arquivo:** `src/AppManager.js:4-7`
+Uma única classe concentra init do banco, rotas, pagamento e auditoria; e o SQLite é
+`:memory:`, perdendo todos os dados a cada restart. **Por que importa:** viola totalmente a
+separação de camadas e torna o sistema inutilizável como persistência real.
+
+#### [HIGH] Checkout sem transação e em callback hell
+**Arquivo:** `src/AppManager.js:28-78`
+Matrícula, pagamento e auditoria são gravados em callbacks aninhados, sem transação. Se um
+passo falha no meio, sobram matrículas sem pagamento. **Por que importa:** compromete a
+consistência financeira — o problema mais grave de um fluxo de checkout.
+
+#### [MEDIUM] N+1 e coordenação assíncrona manual no relatório
+**Arquivo:** `src/AppManager.js:80-129`
+O relatório financeiro dispara uma query por curso, por matrícula e por usuário, coordenadas
+com contadores manuais (`coursesPending`/`enrPending`). **Por que importa:** frágil (fácil
+errar a contagem e nunca responder) e com performance ruim.
+
+#### [MEDIUM] Delete de usuário deixa órfãos e "pagamento" fake
+**Arquivo:** `src/AppManager.js:131-137` e `:47`
+Ao deletar usuário, matrículas e pagamentos ficam órfãos (o próprio código admite isso na
+resposta), e a aprovação de pagamento é `cc.startsWith("4")`. **Por que importa:**
+integridade referencial furada e regra de negócio fictícia no lugar do gateway.
+
+#### [LOW] Exports mortos / estado global inútil
+**Arquivo:** `src/utils.js:9-10,25`
+`globalCache` e `totalRevenue` são exportados mas nunca cumprem função real. **Por que
+importa:** código morto que confunde e sugere estado global compartilhado indevido.
+
+#### [LOW] `console.log` como log e magic strings de status
+**Arquivo:** `src/AppManager.js` (`"PAID"`/`"DENIED"` espalhados)
+**Por que importa:** logging inadequado e strings mágicas que deveriam ser constantes/enum.
+
+### Projeto 3 — `task-manager-api/` (Python / Flask — API de Task Manager)
+
+> Projeto já com alguma separação de camadas (models, routes, services, utils), mas com
+> problemas de segurança, arquitetura e código morto.
+
+#### [CRITICAL] Hash MD5 sem salt e hash exposto na API
+**Arquivo:** `models/user.py:29,32` e `:22`
+Senhas são "protegidas" com MD5 sem salt, e o `to_dict` inclui o campo `password` (o hash),
+devolvido em `GET /users`, `POST /users` e no `/login`. **Por que importa:** MD5 é quebrável
+por rainbow tables e o hash ainda vaza pela API — dupla falha de credenciais.
+
+#### [CRITICAL] Credenciais SMTP hardcoded
+**Arquivo:** `services/notification_service.py:9-10`
+Usuário e senha de e-mail fixos no código. **Por que importa:** segredo versionado que dá
+acesso à conta de envio; deveria vir de variável de ambiente/config.
+
+#### [HIGH] Segredo fixo e autenticação falsa
+**Arquivo:** `app.py:13` e `routes/user_routes.py:210`
+`SECRET_KEY` hardcoded e o login retorna `'fake-jwt-token-' + id` — um "token" previsível,
+sem assinatura nem expiração. **Por que importa:** a autenticação é decorativa; qualquer um
+forja o token de outro usuário.
+
+#### [MEDIUM] Regra de negócio no controller e duplicada
+**Arquivo:** `routes/task_routes.py:30-39`, `routes/user_routes.py:171-180`, `routes/report_routes.py:34-43`
+O cálculo de "overdue" é reescrito à mão em três rotas, enquanto `Task.is_overdue()`
+(`models/task.py:50`) existe e nunca é usado. **Por que importa:** lógica na camada errada e
+triplicada — corrigir a regra exige mexer em três lugares.
+
+#### [MEDIUM] Queries N+1 e ausência de paginação
+**Arquivo:** `routes/report_routes.py:53-68`, `routes/user_routes.py:22`, `routes/task_routes.py:11`
+O relatório faz uma query por usuário, `get_users` dispara lazy-load com `len(u.tasks)`, e
+nenhuma listagem tem paginação. **Por que importa:** performance degrada com o volume de
+dados e as respostas ficam ilimitadas.
+
+#### [MEDIUM] `except:` nu engolindo erros
+**Arquivo:** `routes/task_routes.py:62`, `:236`; `routes/user_routes.py:130`, `:149`
+Blocos `except:` capturam tudo e devolvem "Erro interno" genérico. **Por que importa:**
+esconde bugs reais e dificulta o diagnóstico em produção.
+
+#### [LOW] Imports e código mortos
+**Arquivo:** `routes/task_routes.py:7`; `utils/helpers.py`; `services/notification_service.py`
+Imports não usados (`os, sys, json, time`), funções nunca chamadas em `helpers.py`
+(`process_task_data`, `sanitize_string`, `generate_id`) e o `NotificationService` que nunca
+é ligado a nenhuma rota. **Por que importa:** ruído que aparenta funcionalidade inexistente.
+
+#### [LOW] Construção manual de dict duplicando `to_dict`
+**Arquivo:** `routes/task_routes.py:16-59` e `routes/user_routes.py:162-181`
+As rotas remontam o dicionário campo a campo em vez de usar o `to_dict()` já existente no
+model. **Por que importa:** duplicação que sai de sincronia quando o schema muda.
+
+---
+
+## Construção da Skill
+
+### Estrutura do `SKILL.md` e arquivos de referência
+
+O `SKILL.md` é o **prompt orquestrador**: define a persona (engenheiro sênior com 30+ anos),
+uma tabela de *quando ler cada referência* e as **3 fases sequenciais** — Análise → Auditoria →
+Refatoração — com um **gate humano obrigatório** entre a Fase 2 e a Fase 3 (nada é modificado antes
+do `y`). O conhecimento de domínio foi fatiado em **6 arquivos de referência**, carregados sob
+demanda (não tudo em memória de uma vez):
+
+| Arquivo | Área de conhecimento exigida | Papel na skill |
+|---|---|---|
+| `references/01-project-analysis.md` | Análise de projeto | Heurísticas de detecção de linguagem, framework, banco, domínio e arquitetura |
+| `references/02-antipattern-catalog.md` | Catálogo de anti-patterns | 16 anti-patterns com sinais de detecção e severidade (inclui APIs deprecated) |
+| `references/03-report-templates.md` | Template de relatório | Formato exato das 3 saídas (Fases 1, 2 e 3) |
+| `references/04-mvc-guidelines.md` | Guidelines de arquitetura | Camadas MVC-alvo (Models, Views/Routes, Controllers) e responsabilidades |
+| `references/05-refactoring-playbook.md` | Playbook de refatoração | 14 transformações antes/depois, uma por anti-pattern |
+| `references/06-validation-checklist.md` | (extra) | Auto-verificação silenciosa ao fim de cada fase |
+
+### Anti-patterns incluídos no catálogo (e por quê)
+
+O catálogo tem **16 anti-patterns** (o desafio pede no mínimo 8), com severidade distribuída, e o
+playbook tem **14 transformações** (mínimo pedido: 8). A escolha cobre as classes de problema que a
+análise manual revelou nos 3 projetos:
+
+| ID | Anti-pattern | Severidade | Motivo de estar no catálogo |
+|---|---|---|---|
+| AP-01 | God Class / God Module | CRITICAL | `models.py` e `AppManager.js` concentravam tudo |
+| AP-02 | Hardcoded Credentials / Secrets | CRITICAL | `SECRET_KEY`, chave de pagamento e SMTP no código |
+| AP-03 | SQL Injection / query dinâmica | CRITICAL | queries por concatenação de string |
+| AP-04 | Senha em texto puro / cripto fraca | CRITICAL | texto puro, `badCrypto`, MD5 sem salt |
+| AP-05 | Estado global mutável | HIGH | conexão global, `globalCache`/`totalRevenue` |
+| AP-06 | Regra de negócio na rota/controller | HIGH | lógica pesada presa nos handlers |
+| AP-07 | Callback hell / acoplamento assíncrono | HIGH | checkout aninhado no Node |
+| AP-08 | Query N+1 | MEDIUM | listagem de pedidos e relatórios |
+| AP-09 | Validação ausente nas rotas | MEDIUM | inputs sem schema |
+| AP-10 | Duplicação de código | MEDIUM | validações e `overdue` repetidos |
+| AP-11 | **API deprecated / recurso obsoleto** | MEDIUM | `datetime.utcnow()`, `Model.query.get()` — **exigido pelo desafio** |
+| AP-12 | Recursos vazando / falta de transação | MEDIUM | checkout sem transação, deletes órfãos |
+| AP-13 | Endpoint perigoso sem proteção | CRITICAL | `/admin/query`, `/admin/reset-db`, rotas admin abertas |
+| AP-14 | Magic numbers / strings mágicas | LOW | faixas de desconto, `"PAID"`/`"DENIED"` |
+| AP-15 | Nomenclatura ruim / baixa legibilidade | LOW | variáveis `u, e, p, cc` |
+| AP-16 | Debug/verbosidade em produção | LOW/MEDIUM | `DEBUG=True`, `print()` como log |
+
+### Como garantimos que a skill é agnóstica de tecnologia
+
+- **Detecção por conteúdo, nunca por nome fixo:** a Fase 1 lê manifestos e arquivos-fonte; não há
+  nome de arquivo, framework ou porta hardcoded na skill.
+- **Layout idiomático por linguagem:** as camadas MVC são as mesmas, mas o *layout* se adapta —
+  **Python fica na raiz do projeto (sem `src/`)** e **Node.js usa `src/`**. As mesmas
+  responsabilidades, na convenção de cada stack.
+- **Preservação de contrato externo:** mesmos paths, métodos HTTP e schema de resposta; a
+  refatoração é interna.
+- **Distribuição reutilizável:** fonte única em `.claude/skills/refactor-arch/` na raiz, **espelhada
+  via symlink** dentro dos 3 projetos — uma cópia lógica, sem divergência.
+- **Prova nas 3 stacks:** a mesma skill rodou em dois Flask (um monólito plano, um parcialmente em
+  camadas) e um Node/Express (God Class), com resultado válido em todos.
+
+### Desafios encontrados e como resolvemos
+
+- **Tensão "preservar contrato" × finding CRITICAL de segurança:** alguns findings (senha vazada no
+  JSON, backdoor `/admin/query`) só se corrigem **mudando** o contrato. Optamos por corrigir e
+  **documentar como mudança intencional de segurança** (remoção de `password` do `to_dict`, remoção
+  do endpoint de SQL arbitrário).
+- **Hashing sem dependência nova:** usamos hashing nativo (`werkzeug.security` / scrypt) em vez de
+  adicionar `bcrypt`, mantendo o projeto leve.
+- **Bug real de path do SQLite:** o `instance_path` do Flask fazia seed e app gravarem em arquivos
+  diferentes conforme o `cwd`; resolvido fixando um path absoluto e determinístico.
+- **Ambiente:** a porta 5000 é ocupada pelo *AirPlay Receiver* do macOS e o Node 12 do shell tinha
+  `npm` quebrado — deixamos a porta configurável via env e validamos o Node com a versão 20.
+
+---
+
+## Resultados
+
+### Resumo dos relatórios de auditoria (findings por severidade)
+
+| Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW | Total | MVC (antes) |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| code-smells-project | Python/Flask | 6 | 2 | 4 | 1 | **13** | 4/10 |
+| ecommerce-api-legacy | Node/Express | 4 | 3 | 4 | 2 | **13** | 1/10 |
+| task-manager-api | Python/Flask | 3 | 3 | 6 | 2 | **14** | 4/10 |
+
+Relatórios completos em `reports/audit-project-{1,2,3}.md`.
+
+### Comparação antes/depois da estrutura
+
+**Projeto 1 — code-smells-project** (4 arquivos planos → camadas na raiz):
+```
+ANTES                          DEPOIS
+app.py                         config/settings.py
+controllers.py                 models/{produto,usuario,pedido,relatorio}_model.py
+models.py                      controllers/{produto,usuario,pedido,relatorio,sistema}_controller.py
+database.py                    views/routes.py
+                               middlewares/error_handler.py
+                               services/notificacao_service.py
+                               database.py  ·  app.py (composition root)
+```
+
+**Projeto 2 — ecommerce-api-legacy** (God Class → `src/` em camadas):
+```
+ANTES                          DEPOIS
+src/app.js                     src/config/index.js
+src/AppManager.js              src/models/{user,course,enrollment,payment,auditLog,report}Model.js
+src/utils.js                   src/services/{checkout,report,password,paymentGateway}Service.js
+                               src/controllers/{checkout,report,user}Controller.js
+                               src/routes/index.js
+                               src/middlewares/{errorHandler,requireAdmin}.js
+                               src/db/{database,init}.js  ·  src/errors/AppError.js
+                               src/app.js (composition root)
+```
+
+**Projeto 3 — task-manager-api** (parcial → MVC completo):
+```
+ANTES                          DEPOIS (acrescenta)
+models/                        config/settings.py
+routes/                        controllers/{auth,user,task,category,report}_controller.py
+services/                      views/{task,user,report,category,health}_routes.py
+utils/                         middlewares/{auth,error_handler}.py
+                               schemas/{user,task,category}_schema.py
+                               services/ (user, category, report reais)  ·  utils/{constants,datetime_utils}.py
+```
+
+### Checklist de Validação preenchido
+
+| Item | P1 | P2 | P3 |
+|---|:-:|:-:|:-:|
+| **Fase 1** — linguagem, framework, domínio e nº de arquivos corretos | ✅ | ✅ | ✅ |
+| **Fase 2** — relatório no template, findings com arquivo:linha, ordenados por severidade, ≥5 findings, APIs deprecated, gate de confirmação | ✅ | ✅ | ✅ |
+| **Fase 3** — estrutura MVC, config sem hardcoded, models, views/routes, controllers, error handling central, entry point claro | ✅ | ✅ | ✅ |
+| **Fase 3** — aplicação inicia sem erros | ✅ | ✅ | ✅ |
+| **Fase 3** — endpoints originais respondem | ✅ | ✅ | ✅ |
+
+### Logs das aplicações após refatoração (evidência real)
+
+Evidência auditável completa em `reports/validation-project-{1,2,3}.md`. Resumo:
+
+- **P1 code-smells — PASS 22/22 endpoints.** Boot sem stack trace (debug off). Correções provadas em
+  runtime: injeção SQL no login → `401`, backdoor `/admin/query` → `404`, `senha` fora de
+  `GET /usuarios`, `secret_key` fora de `/health`.
+- **P2 ecommerce — PASS 8/8 endpoints.** Rotas admin agora exigem `x-admin-token` (`401` sem token);
+  após `DELETE /api/users/1`, o relatório mostra `revenue 0 / students []` — **prova de que a
+  cascata removeu os dados órfãos** (bug original corrigido); número do cartão não aparece nos logs.
+- **P3 task-manager — PASS 23/23 verificações.** `/login` devolve **token assinado** (itsdangerous)
+  no lugar do `fake-jwt-token-<id>`; `password` (hash) removido de todas as respostas; `DELETE` de
+  tasks/users/categories agora exige `Authorization: Bearer <token>`.
+
+### Como a skill se comportou em stacks diferentes
+
+Mesma skill, transformações adaptadas ao contexto: em Flask as camadas ficaram na raiz, em Node no
+`src/`. O ponto de partida também variou — monólito plano (P1), God Class (P2) e projeto
+parcialmente em camadas (P3) — e em todos a Fase 3 convergiu para as mesmas camadas MVC preservando
+o contrato externo.
+
+---
+
+## Como Executar
+
+### Pré-requisitos
+
+- **Claude Code** instalado e configurado.
+- **Python 3.13** com `venv` (projetos Flask) e **Node.js 20** com `npm` (projeto Express).
+
+### Executar a skill em cada projeto
+
+```bash
+# Projeto 1 — Python/Flask
+cd code-smells-project && claude "/refactor-arch"      # Fase 1 → 2 → [y] → 3
+
+# Projeto 2 — Node.js/Express
+cd ../ecommerce-api-legacy && claude "/refactor-arch"
+
+# Projeto 3 — Python/Flask (parcialmente organizado)
+cd ../task-manager-api && claude "/refactor-arch"
+```
+
+A skill pausa ao fim da Fase 2 e só refatora após o `y`. A saída da Fase 2 é salva em
+`reports/audit-project-<N>.md` e a evidência de validação da Fase 3 em
+`reports/validation-project-<N>.md`.
+
+### Validar manualmente que a refatoração funciona
+
+```bash
+# Flask (P1 e P3) — porta configurável (5000 costuma estar ocupada no macOS)
+PORT=5001 .venv/bin/python app.py &
+curl -s http://localhost:5001/health
+
+# Node/Express (P2)
+ADMIN_TOKEN=dev-admin-token node src/app.js &
+curl -s -X POST http://localhost:3000/api/checkout \
+  -H 'Content-Type: application/json' \
+  -d '{"usr":"Ana","eml":"ana@x.com","pwd":"segredo","c_id":2,"card":"4111222233334444"}'
+```
+
+Compare os status HTTP com as tabelas de `reports/validation-project-{1,2,3}.md`.

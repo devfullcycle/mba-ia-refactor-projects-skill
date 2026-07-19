@@ -1,6 +1,8 @@
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from database import db
-from datetime import datetime
-import hashlib
+from utils.datetime_utils import now_utc
+
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -11,28 +13,55 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(50), default='user')
     active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=now_utc)
 
+    # ------- regra de domínio -------
+    def set_password(self, raw_password):
+        self.password = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password):
+        return check_password_hash(self.password, raw_password)
+
+    def is_admin(self):
+        return self.role == 'admin'
+
+    # ------- serialização (nunca expõe o hash de senha) -------
     def to_dict(self):
         return {
             'id': self.id,
             'name': self.name,
             'email': self.email,
-            'password': self.password,
             'role': self.role,
             'active': self.active,
-            'created_at': str(self.created_at)
+            'created_at': str(self.created_at),
         }
 
-    def set_password(self, pwd):
+    def to_summary_dict(self):
+        data = self.to_dict()
+        data['task_count'] = len(self.tasks)
+        return data
 
-        self.password = hashlib.md5(pwd.encode()).hexdigest()
+    # ------- acesso a dados -------
+    @classmethod
+    def get(cls, user_id):
+        return db.session.get(cls, user_id)
 
-    def check_password(self, pwd):
-        return self.password == hashlib.md5(pwd.encode()).hexdigest()
+    @classmethod
+    def all(cls):
+        return cls.query.all()
 
-    def is_admin(self):
-        if self.role == 'admin':
-            return True
-        else:
-            return False
+    @classmethod
+    def count(cls):
+        return cls.query.count()
+
+    @classmethod
+    def get_by_email(cls, email):
+        return cls.query.filter_by(email=email).first()
+
+    def save(self):
+        db.session.add(self)
+        db.session.commit()
+
+    def delete(self):
+        db.session.delete(self)
+        db.session.commit()
