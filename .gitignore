@@ -10,3 +10,5 @@ venv/
 # SQLite
 *.db
 instance/
+PLANO_DE_EXECUCAO.md
+atividade.html

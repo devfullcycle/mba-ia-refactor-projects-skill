@@ -1,12 +1,16 @@
 @baseUrl = http://localhost:3000
+@userApiKey = replace-with-a-strong-user-key
+@adminApiKey = replace-with-a-strong-admin-key
+@userEmail = student@example.com
 
 ### Checkout - sucesso
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
+x-api-key: {{userApiKey}}
 
 {
   "usr": "Guilherme",
-  "eml": "gui@fullcycle.com.br",
+  "eml": "{{userEmail}}",
   "pwd": "senhaforte",
   "c_id": 2,
   "card": "4111222233334444"
@@ -15,17 +19,20 @@ Content-Type: application/json
 ### Checkout - pagamento recusado
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
+x-api-key: {{userApiKey}}
 
 {
   "usr": "João",
-  "eml": "joao@teste.com",
+  "eml": "{{userEmail}}",
   "pwd": "123",
   "c_id": 1,
   "card": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
+### Relatório financeiro administrativo (requer papel admin)
 GET {{baseUrl}}/api/admin/financial-report
+x-api-key: {{adminApiKey}}
 
-### Deletar usuário
+### Deletar usuário (requer papel admin; recusa com 409 se houver matrícula/pagamento vinculado)
 DELETE {{baseUrl}}/api/users/1
+x-api-key: {{adminApiKey}}
