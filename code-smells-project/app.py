@@ -1,88 +1,94 @@
-from flask import Flask, jsonify, request
+"""Composition root e entry point da API da loja."""
+
+from __future__ import annotations
+
+from flask import Flask, request
 from flask_cors import CORS
-import controllers
-from database import get_db
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"
-app.config["DEBUG"] = True
-CORS(app)
+from config import Settings
+from store.controllers.orders import OrderController
+from store.controllers.products import ProductController
+from store.controllers.reports import ReportController
+from store.controllers.users import UserController
+from store.infrastructure.repositories import (
+    OrderRepository,
+    ProductRepository,
+    UserRepository,
+)
+from store.infrastructure.security import PasswordHasher, TokenService
+from store.infrastructure.sqlite import SQLiteDatabase
+from store.views.error_mapper import register_error_handlers
+from store.views.routes import create_blueprint
 
-app.add_url_rule("/produtos", "listar_produtos", controllers.listar_produtos, methods=["GET"])
-app.add_url_rule("/produtos/busca", "buscar_produtos", controllers.buscar_produtos, methods=["GET"])
-app.add_url_rule("/produtos/<int:id>", "buscar_produto", controllers.buscar_produto, methods=["GET"])
-app.add_url_rule("/produtos", "criar_produto", controllers.criar_produto, methods=["POST"])
-app.add_url_rule("/produtos/<int:id>", "atualizar_produto", controllers.atualizar_produto, methods=["PUT"])
-app.add_url_rule("/produtos/<int:id>", "deletar_produto", controllers.deletar_produto, methods=["DELETE"])
 
-app.add_url_rule("/usuarios", "listar_usuarios", controllers.listar_usuarios, methods=["GET"])
-app.add_url_rule("/usuarios/<int:id>", "buscar_usuario", controllers.buscar_usuario, methods=["GET"])
-app.add_url_rule("/usuarios", "criar_usuario", controllers.criar_usuario, methods=["POST"])
-app.add_url_rule("/login", "login", controllers.login, methods=["POST"])
+def create_app(settings: Settings | None = None) -> Flask:
+    settings = settings or Settings.from_env()
+    application = Flask(__name__)
+    application.config.update(
+        SECRET_KEY=settings.secret_key,
+        DEBUG=settings.debug,
+        ENV=settings.environment,
+    )
+    CORS(application, origins=settings.cors_origins)
 
-app.add_url_rule("/pedidos", "criar_pedido", controllers.criar_pedido, methods=["POST"])
-app.add_url_rule("/pedidos", "listar_todos_pedidos", controllers.listar_todos_pedidos, methods=["GET"])
-app.add_url_rule("/pedidos/usuario/<int:usuario_id>", "listar_pedidos_usuario", controllers.listar_pedidos_usuario, methods=["GET"])
-app.add_url_rule("/pedidos/<int:pedido_id>/status", "atualizar_status_pedido", controllers.atualizar_status_pedido, methods=["PUT"])
+    database = SQLiteDatabase(settings.database_path)
+    password_hasher = PasswordHasher()
+    token_service = TokenService(settings.secret_key, settings.token_ttl_seconds)
 
-app.add_url_rule("/relatorios/vendas", "relatorio_vendas", controllers.relatorio_vendas, methods=["GET"])
+    product_repository = ProductRepository(database)
+    user_repository = UserRepository(database)
+    order_repository = OrderRepository(database)
 
-app.add_url_rule("/health", "health_check", controllers.health_check, methods=["GET"])
+    product_controller = ProductController(product_repository)
+    user_controller = UserController(user_repository, password_hasher)
+    order_controller = OrderController(order_repository)
+    report_controller = ReportController(order_repository)
+    application.register_blueprint(
+        create_blueprint(
+            database=database,
+            products=product_controller,
+            users=user_controller,
+            orders=order_controller,
+            reports=report_controller,
+            tokens=token_service,
+        )
+    )
+    register_error_handlers(application)
 
-@app.route("/")
-def index():
-    return jsonify({
-        "mensagem": "Bem-vindo à API da Loja",
-        "versao": "1.0.0",
-        "endpoints": {
-            "produtos": "/produtos",
-            "usuarios": "/usuarios",
-            "pedidos": "/pedidos",
-            "login": "/login",
-            "relatorios": "/relatorios/vendas",
-            "health": "/health"
-        }
-    })
+    @application.before_request
+    def initialize_database() -> None:
+        if request.path != "/":
+            database.initialize(
+                bootstrap_email=settings.bootstrap_admin_email,
+                bootstrap_password=settings.bootstrap_admin_password,
+            )
 
-@app.route("/admin/reset-db", methods=["POST"])
-def reset_database():
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("DELETE FROM itens_pedido")
-    cursor.execute("DELETE FROM pedidos")
-    cursor.execute("DELETE FROM produtos")
-    cursor.execute("DELETE FROM usuarios")
-    db.commit()
-    print("!!! BANCO DE DADOS RESETADO !!!")
-    return jsonify({"mensagem": "Banco de dados resetado", "sucesso": True}), 200
+    application.extensions["store"] = {
+        "database": database,
+        "password_hasher": password_hasher,
+        "repositories": {
+            "products": product_repository,
+            "users": user_repository,
+            "orders": order_repository,
+        },
+        "controllers": {
+            "products": product_controller,
+            "users": user_controller,
+            "orders": order_controller,
+            "reports": report_controller,
+        },
+    }
+    return application
 
-@app.route("/admin/query", methods=["POST"])
-def executar_query():
-    dados = request.get_json()
-    query = dados.get("sql", "")
-    if not query:
-        return jsonify({"erro": "Query não informada"}), 400
 
-    db = get_db()
-    cursor = db.cursor()
-    try:
-        cursor.execute(query)
-        if query.strip().upper().startswith("SELECT"):
-            rows = cursor.fetchall()
-            result = [dict(row) for row in rows]
-            return jsonify({"dados": result, "sucesso": True}), 200
-        else:
-            db.commit()
-            return jsonify({"mensagem": "Query executada", "sucesso": True}), 200
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
+app = create_app()
+
 
 if __name__ == "__main__":
-
-    get_db()
-    print("=" * 50)
-    print("SERVIDOR INICIADO")
-    print("Rodando em http://localhost:5000")
-    print("=" * 50)
-
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    settings = Settings.from_env()
+    app.run(
+        host=settings.host,
+        port=settings.port,
+        debug=settings.debug,
+        use_reloader=settings.debug,
+    )

@@ -1,0 +1,22 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente e segredos locais
+.env
+.env.*
+!.env.example
+
+# Logs
+npm-debug.log*
+*.log
+
+# Cobertura e artefatos de teste
+coverage/
+
+# Banco SQLite persistido em arquivo (o projeto roda com :memory: por padrão)
+*.sqlite
+*.sqlite3
+*.db
+
+# Sistema operacional / editor
+.DS_Store
