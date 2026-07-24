@@ -1,6 +1,9 @@
 @baseUrl = http://localhost:3000
+# Mesma chave passada em ADMIN_API_KEY ao iniciar o servidor.
+# Sem ela, as rotas administrativas respondem 401 (negar por default).
+@adminKey = uma-chave-local
 
-### Checkout - sucesso
+### Checkout - sucesso (usuário novo)
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
@@ -12,20 +15,66 @@ Content-Type: application/json
   "card": "4111222233334444"
 }
 
-### Checkout - pagamento recusado
+### Checkout - sucesso (usuário existente do seed)
+POST {{baseUrl}}/api/checkout
+Content-Type: application/json
+
+{
+  "usr": "Leonan",
+  "eml": "leonan@fullcycle.com.br",
+  "pwd": "demo1234",
+  "c_id": 1,
+  "card": "4555666677778888"
+}
+
+### Checkout - pagamento recusado (cartão fora do prefixo aceito pelo simulador)
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json
 
 {
   "usr": "João",
   "eml": "joao@teste.com",
-  "pwd": "123",
+  "pwd": "senhaforte",
   "c_id": 1,
   "card": "5111222233334444"
 }
 
-### Relatório financeiro administrativo
+### Checkout - 400: conta nova sem senha
+# Antes da refatoração, a conta era criada com a senha default "123456".
+POST {{baseUrl}}/api/checkout
+Content-Type: application/json
+
+{
+  "usr": "Sem Senha",
+  "eml": "sem.senha@teste.com",
+  "c_id": 2,
+  "card": "4111222233334444"
+}
+
+### Checkout - 404: curso inexistente
+POST {{baseUrl}}/api/checkout
+Content-Type: application/json
+
+{
+  "usr": "Teste",
+  "eml": "teste@exemplo.com",
+  "pwd": "senhaforte",
+  "c_id": 999,
+  "card": "4111222233334444"
+}
+
+### Relatório financeiro administrativo (requer credencial)
+GET {{baseUrl}}/api/admin/financial-report
+x-api-key: {{adminKey}}
+
+### Relatório financeiro sem credencial - 401
 GET {{baseUrl}}/api/admin/financial-report
 
-### Deletar usuário
+### Deletar usuário (requer credencial)
+# Matrículas e pagamentos associados são removidos em cascata.
 DELETE {{baseUrl}}/api/users/1
+x-api-key: {{adminKey}}
+
+### Deletar usuário inexistente - 404
+DELETE {{baseUrl}}/api/users/999
+x-api-key: {{adminKey}}
