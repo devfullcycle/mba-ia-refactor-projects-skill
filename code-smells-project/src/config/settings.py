@@ -38,7 +38,8 @@ class Config:
             for origin in os.environ.get("CORS_ORIGINS", "*").split(",")
             if origin.strip()
         ]
-        self.SEED_ON_INIT = _bool("SEED_ON_INIT", default=True)
+        # Dados de demonstração não são semeados em produção.
+        self.SEED_ON_INIT = _bool("SEED_ON_INIT", default=self.ENV != "production")
         self.SECRET_KEY_IS_EPHEMERAL = False
         self.SECRET_KEY = self._resolve_secret_key()
 
