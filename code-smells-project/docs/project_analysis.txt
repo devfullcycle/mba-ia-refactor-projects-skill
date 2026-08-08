@@ -1,0 +1,42 @@
+================================
+  PHASE 1: PROJECT ANALYSIS
+  ================================
+  Language:      Python 3 (runtime observed: 3.14)
+  Framework:     Flask 3.1.1
+  Dependencies:  flask-cors 5.0.1
+  Domain:        E-commerce API (produtos, pedidos, usuários, relatórios)
+  Architecture:  Monolítica — pseudo-MVC quebrado; 4 módulos sem camadas claras
+  Source files:  4 files analyzed (app.py, controllers.py, models.py, database.py)
+  Total LOC:     ~780 lines
+  Database:      SQLite (loja.db) via sqlite3 stdlib — sem ORM
+  DB tables:     produtos, usuarios, pedidos, itens_pedido
+  Bind:          0.0.0.0:5003 (debug=True)
+  Tests:         Nenhum
+  ================================================
+
+  STRUCTURE
+  ---------
+  app.py           Flask app, registro de rotas, endpoints admin inseguros
+  controllers.py   Handlers HTTP (validação + efeitos colaterais + SQL no health)
+  models.py        Acesso a dados + regras de negócio + relatórios (God Module)
+  database.py      Conexão global, schema DDL e seed
+
+  CURRENT FLOW
+  ------------
+  HTTP (app.py / controllers.py)
+          │
+          ▼
+    models.py  ← SQL + domínio + reporting
+          │
+          ▼
+  database.get_db()  ← conexão global mutável
+          │
+          ▼
+       loja.db
+
+  NOTES
+  -----
+  - README indica porta 5000; código usa 5003.
+  - Camada View inexistente (API JSON apenas — esperado para API REST).
+  - "models" não são entidades de domínio; são funções de persistência.
+  ================================================

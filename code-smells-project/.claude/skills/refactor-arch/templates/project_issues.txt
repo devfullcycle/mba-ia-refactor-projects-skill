@@ -1,0 +1,17 @@
+================================
+  PHASE 2: CODE SMELLS DETECTION
+  ================================
+  Code Smells Detected:
+  - Long Method: 2 instances
+  - Large Class: 1 instance
+  - Duplicated Code: 3 instances
+  - God Object: 1 instance
+  - Feature Envy: 2 instances
+  - Shotgun Surgery: 1 instance
+
+  Architecture Issues Detected:
+  - Tight Coupling between modules
+  - Lack of Separation of Concerns
+  - Inconsistent Naming Conventions
+  - Poor Error Handling and Logging
+  ================================================

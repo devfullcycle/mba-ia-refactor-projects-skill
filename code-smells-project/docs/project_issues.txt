@@ -1,0 +1,129 @@
+================================
+  PHASE 2: CODE SMELLS DETECTION
+  ================================
+  Ordered by severity (Critical → Low).
+  Reference: issues_severity.md
+
+  SUMMARY
+  -------
+  Code Smells Detected:
+  - God Object / Large Module: 1 instance (models.py)
+  - Long Method: 3+ instances (criar_produto, criar_pedido, get_pedidos_*, relatorio_vendas)
+  - Duplicated Code: 4+ instances (validação produto, row→dict, carga de pedidos)
+  - Feature Envy: controllers acessam DB direto (health_check); models misturam SQL+domínio
+  - Primitive Obsession / Magic Numbers: descontos em relatorio_vendas
+  - Shotgun Surgery risk: regras de produto/pedido espalhadas em controllers + models
+
+  Architecture Issues Detected:
+  - Lack of Separation of Concerns (MVC quebrado)
+  - Tight Coupling (controllers ↔ models ↔ global DB)
+  - Business Logic in Controllers
+  - Global Mutable State (db_connection)
+  - Poor Error Handling and Logging (print / Exception genérica)
+  - Inconsistent Naming / contract docs (porta README vs app)
+
+  Deprecated / risky APIs:
+  - Flask __version__ deprecated (Flask 3.2+); not used in app code, but noted
+  - debug=True + host 0.0.0.0 in entrypoint (unsafe for any non-local deploy)
+  - Raw string-built SQL everywhere (not deprecated API, but obsolete/unsafe pattern)
+
+  ================================================
+
+  DETAILED FINDINGS
+  -----------------
+
+  [CRITICAL] SQL Injection (string-concatenated queries)
+  Location: models.py (get_produto_por_id, criar_produto, atualizar_produto,
+            deletar_produto, login_usuario, criar_usuario, criar_pedido,
+            get_pedidos_usuario, get_todos_pedidos, atualizar_status_pedido,
+            buscar_produtos, etc.)
+  Description: Queries built with string concatenation instead of parameterized
+               statements (? placeholders). Attackers can inject SQL via IDs,
+               names, email, search terms, status, etc.
+
+  [CRITICAL] Arbitrary SQL execution endpoint (RCE-equivalent on DB)
+  Location: app.py → executar_query (/admin/query)
+  Description: Accepts arbitrary SQL from JSON body with no auth. Allows full
+               read/write/DDL on loja.db.
+
+  [CRITICAL] Unauthenticated destructive admin endpoint
+  Location: app.py → reset_database (/admin/reset-db)
+  Description: Deletes all rows from all tables without authentication.
+
+  [CRITICAL] Secrets and credentials exposure
+  Location: app.py (SECRET_KEY hardcoded); controllers.py health_check
+            (returns secret_key in JSON); database.py seed (plaintext passwords);
+            models.py get_todos_usuarios / get_usuario_por_id (returns senha)
+  Description: Hardcoded secret, passwords stored and returned in plaintext,
+               health endpoint leaks secret_key and internal paths.
+
+  [CRITICAL] God Object / Large Module + mixed responsibilities
+  Location: models.py (~314 LOC)
+  Description: Single module owns products, users, orders, items, reporting,
+               stock updates and login — violates SRP and true Model layer.
+
+  [HIGH] Lack of Separation of Concerns / broken MVC
+  Location: app.py, controllers.py, models.py, database.py
+  Description: Controllers hold validation + notifications; models hold SQL +
+               business rules; app.py holds admin/data logic; no service layer;
+               no distinct Model entities. Target architecture is clean MVC.
+
+  [HIGH] Business logic and side effects in Controllers
+  Location: controllers.py → criar_produto, atualizar_produto, criar_pedido,
+            atualizar_status_pedido
+  Description: Validation rules, category allow-lists, and fake email/SMS/push
+               notifications live in HTTP handlers — hard to test/reuse.
+
+  [HIGH] Global mutable database connection
+  Location: database.py → db_connection / get_db()
+  Description: Process-wide SQLite connection with check_same_thread=False.
+               Hinders testing, request isolation, and safe concurrency.
+
+  [HIGH] Tight coupling without dependency injection
+  Location: controllers.py imports models + get_db; models imports get_db
+  Description: Layers import concrete modules directly; cannot swap persistence
+               or mock easily.
+
+  [HIGH] N+1 query antipattern
+  Location: models.py → get_pedidos_usuario, get_todos_pedidos
+  Description: For each pedido, queries itens_pedido; for each item, queries
+               produtos. Performance degrades with dataset size.
+
+  [MEDIUM] Duplicated Code
+  Location: controllers.py (criar_produto ↔ atualizar_produto validation);
+            models.py (row→dict for produtos/usuarios/pedidos duplicated;
+            get_pedidos_usuario ↔ get_todos_pedidos nearly identical)
+  Description: Copy-paste increases Shotgun Surgery risk on rule changes.
+
+  [MEDIUM] Long Method
+  Location: controllers.criar_produto; models.criar_pedido; models.relatorio_vendas;
+            models.get_todos_pedidos
+  Description: Methods mix validation, persistence, calculation and mapping.
+
+  [MEDIUM] Poor Error Handling and Logging
+  Location: controllers.py (broad except Exception + print)
+  Description: No structured logging, stack traces or error codes; leaks raw
+               exception strings to API clients.
+
+  [MEDIUM] Missing / weak input validation
+  Location: controllers.criar_usuario, login, criar_pedido; models SQL paths
+  Description: Types rarely coerced/validated; email format unchecked; pedido
+               item shape lightly validated.
+
+  [LOW] Magic numbers
+  Location: models.relatorio_vendas (10000/5000/1000 and 0.1/0.05/0.02)
+  Description: Discount thresholds hardcoded without named constants/config.
+
+  [LOW] Inconsistent docs / naming
+  Location: README.md (port 5000) vs app.py (port 5003); ambiente "producao"
+            with debug=True in health_check
+  Description: Misleading operational signals for agents and humans.
+
+  [LOW] Dead / unused import
+  Location: models.py → import sqlite3
+  Description: Imported but unused (minor cleanliness issue).
+
+  ================================================
+  Totals: Critical=5 | High=5 | Medium=4 | Low=3
+  Minimum of 5 smells/issues: satisfied (17 detailed findings).
+  ================================================

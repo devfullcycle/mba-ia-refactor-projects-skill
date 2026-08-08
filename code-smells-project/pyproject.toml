@@ -1,0 +1,25 @@
+[project]
+name = "code-smells-project"
+version = "2.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "flask==3.1.1",
+    "flask-cors==5.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.2",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

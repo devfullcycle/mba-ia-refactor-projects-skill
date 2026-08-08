@@ -1,0 +1,60 @@
+================================
+PHASE 3: REFACTORING COMPLETE
+================================
+New Project Structure:
+src/
+├── app.py                      # composition root (create_app)
+├── config/settings.py          # env-based configuration
+├── db/database.py              # per-request SQLite + schema/seed
+├── models/
+│   ├── mappers.py
+│   ├── produto_model.py
+│   ├── usuario_model.py
+│   ├── pedido_model.py
+│   └── relatorio_model.py
+├── services/
+│   ├── errors.py
+│   ├── produto_service.py
+│   ├── usuario_service.py
+│   ├── pedido_service.py
+│   ├── relatorio_service.py
+│   └── notificacao_service.py
+├── controllers/
+│   ├── deps.py
+│   ├── produto_controller.py
+│   ├── usuario_controller.py
+│   ├── pedido_controller.py
+│   ├── relatorio_controller.py
+│   └── health_controller.py
+├── views/routes.py             # View: URL registration
+└── middlewares/error_handler.py
+
+app.py                          # entrypoint
+tests/unit + tests/integration
+docs/                           # phase 1–3 reports
+
+Removed legacy god modules:
+  - controllers.py
+  - models.py
+  - database.py
+
+Issues Addressed
+  ✓ SQL Injection → parameterized queries everywhere
+  ✓ /admin/query removed
+  ✓ /admin/reset-db protected by ADMIN_TOKEN
+  ✓ SECRET_KEY from env; /health no longer leaks secrets
+  ✓ Passwords hashed (werkzeug); senha omitted from API
+  ✓ MVC + services separation of concerns
+  ✓ Global DB connection replaced with Flask g
+  ✓ N+1 pedidos fixed with JOIN
+  ✓ Duplicated validation/mapping consolidated
+  ✓ print → logging; magic discount tiers → DESCONTO_FAIXAS
+  ✓ README / AGENTS.md updated
+
+Validation
+  ✓ Application boots without errors
+  ✓ pytest: 9 passed
+  ✓ Endpoints respond (health, produtos, login)
+  ✓ /admin/query returns 404
+  ✓ API paths and JSON envelopes preserved
+================================
