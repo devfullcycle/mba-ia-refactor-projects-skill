@@ -1,60 +1,64 @@
 from database import db
 from datetime import datetime
-import json
+from config import settings
+
 
 class Task(db.Model):
-    __tablename__ = 'tasks'
+    __tablename__ = "tasks"
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text, nullable=True)
-    status = db.Column(db.String(50), default='pending')
-    priority = db.Column(db.Integer, default=3)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    category_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
+    status = db.Column(db.String(50), default="pending")
+    priority = db.Column(db.Integer, default=settings.DEFAULT_PRIORITY)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     due_date = db.Column(db.DateTime, nullable=True)
     tags = db.Column(db.String(500), nullable=True)
 
-    user = db.relationship('User', backref='tasks')
-    category = db.relationship('Category', backref='tasks')
+    user = db.relationship("User", backref="tasks")
+    category = db.relationship("Category", backref="tasks")
 
     def to_dict(self):
-        data = {}
-        data['id'] = self.id
-        data['title'] = self.title
-        data['description'] = self.description
-        data['status'] = self.status
-        data['priority'] = self.priority
-        data['user_id'] = self.user_id
-        data['category_id'] = self.category_id
-        data['created_at'] = str(self.created_at)
-        data['updated_at'] = str(self.updated_at)
-        data['due_date'] = str(self.due_date) if self.due_date else None
-        data['tags'] = self.tags.split(',') if self.tags else []
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "status": self.status,
+            "priority": self.priority,
+            "user_id": self.user_id,
+            "category_id": self.category_id,
+            "created_at": str(self.created_at),
+            "updated_at": str(self.updated_at),
+            "due_date": str(self.due_date) if self.due_date else None,
+            "tags": self.tags.split(",") if self.tags else [],
+        }
+
+    def serializable(self):
+        """Payload HTTP com flags derivadas (overdue)."""
+        data = self.to_dict()
+        data["overdue"] = self.is_overdue()
         return data
 
-    def validate_status(self, new_status):
-        valid = ['pending', 'in_progress', 'done', 'cancelled']
-        if new_status in valid:
-            return True
-        else:
-            return False
-
-    def validate_priority(self, p):
-        if p >= 1 and p <= 5:
-            return True
-        return False
-
     def is_overdue(self):
-        if self.due_date:
-            if self.due_date < datetime.utcnow():
-                if self.status != 'done' and self.status != 'cancelled':
-                    return True
-                else:
-                    return False
-            else:
-                return False
-        else:
-            return False
+        valid = _is_active_status(self.status)
+        return self.due_date is not None and self.due_date < datetime.utcnow() and valid
+
+    def days_overdue(self):
+        if self.is_overdue():
+            return (datetime.utcnow() - self.due_date).days
+        return 0
+
+
+def _is_active_status(status):
+    return status not in ("done", "cancelled")
+
+
+def validate_status(status):
+    return status in settings.VALID_STATUSES
+
+
+def validate_priority(priority):
+    return 1 <= priority <= 5

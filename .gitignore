@@ -10,3 +10,7 @@ venv/
 # SQLite
 *.db
 instance/
+code-smells-project/.claude/settings.json
+
+# FUSE transient artifacts
+.fuse_hidden*
