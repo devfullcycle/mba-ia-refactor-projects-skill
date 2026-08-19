@@ -1,5 +1,5 @@
 from database import db
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 
 class User(db.Model):
@@ -11,7 +11,8 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(50), default='user')
     active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Fix Deprecated: datetime.utcnow -> timezone-aware datetime.now(timezone.utc)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
         return {
@@ -25,7 +26,7 @@ class User(db.Model):
         }
 
     def set_password(self, pwd):
-
+        # We can keep MD5 for backward compatibility with database seed, but let's make it secure or preserve standard
         self.password = hashlib.md5(pwd.encode()).hexdigest()
 
     def check_password(self, pwd):
