@@ -1,17 +1,18 @@
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone
+from config.settings import Config
 
 class NotificationService:
     def __init__(self):
         self.notifications = []
-        self.email_host = 'smtp.gmail.com'
-        self.email_port = 587
-        self.email_user = 'taskmanager@gmail.com'
-        self.email_password = 'senha123'
+        self.email_host = Config.SMTP_HOST
+        self.email_port = Config.SMTP_PORT
+        self.email_user = Config.SMTP_USER
+        self.email_password = Config.SMTP_PASSWORD
 
     def send_email(self, to, subject, body):
         try:
-
+            # Simulate or send safely using config
             server = smtplib.SMTP(self.email_host, self.email_port)
             server.starttls()
             server.login(self.email_user, self.email_password)
@@ -21,7 +22,8 @@ class NotificationService:
             print(f"Email enviado para {to}")
             return True
         except Exception as e:
-            print(f"Erro ao enviar email: {str(e)}")
+            # Safe fallbacks or logs instead of crashing
+            print(f"Erro ao enviar email (Simulado ou Falhou): {str(e)}")
             return False
 
     def notify_task_assigned(self, user, task):
@@ -32,7 +34,8 @@ class NotificationService:
             'type': 'task_assigned',
             'user_id': user.id,
             'task_id': task.id,
-            'timestamp': datetime.utcnow()
+            # Fix Deprecated: datetime.utcnow -> timezone-aware
+            'timestamp': datetime.now(timezone.utc)
         })
 
     def notify_task_overdue(self, user, task):
