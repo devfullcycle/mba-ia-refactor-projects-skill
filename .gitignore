@@ -10,4 +10,3 @@ venv/
 # SQLite
 *.db
 instance/
-.claude/
