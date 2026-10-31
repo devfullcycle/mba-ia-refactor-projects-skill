@@ -461,7 +461,7 @@ datetime.now(timezone.utc)            # em vez de datetime.utcnow()
 task = db.session.get(Task, task_id)  # em vez de Task.query.get(task_id)
 ```
 
-**Referência:** Catálogo de anti-patterns (requisito de detecção de APIs deprecated); não há ID dedicado no catálogo — registrado aqui como extensão `DEP-01`.
+**Referência:** `references/anti-patterns.md` → DEP-01
 
 ---
 
@@ -531,4 +531,4 @@ task = db.session.get(Task, task_id)  # em vez de Task.query.get(task_id)
 - Versões de runtime das bibliotecas não confirmadas (sem ambiente virtual/lockfile verificado).
 - `seed.py` usa senhas de exemplo fracas (`1234`, `abcd`, `pass`); é um script de desenvolvimento, não conta como achado de produção, mas será ajustado se o hashing mudar.
 - A ausência de autenticação pode ser intencional no projeto-base; ainda assim, pelo critério do catálogo (SEC-04), é um achado HIGH e será endereçado sem alterar os contratos de resposta existentes.
-- `DEP-01` não possui ID no catálogo de referência, apesar de ser requisito do desafio; registrado como extensão.
+- `DEP-01` foi incorporado ao catálogo de referência (`references/anti-patterns.md`), cobrindo o requisito de detecção de APIs deprecated que antes não tinha ID dedicado.

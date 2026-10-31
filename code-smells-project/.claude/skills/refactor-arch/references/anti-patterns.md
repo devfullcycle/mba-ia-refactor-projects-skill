@@ -121,6 +121,12 @@ Cada anti-pattern tem: **ID**, **severidade**, **regra de detecção** (com o qu
 - **Por que:** Refatoração sem segurança de regressão → bugs em produção.
 - **Critério de correção:** Adicionar suite de testes mínima (unit + integration para rotas críticas).
 
+### DEP-01 — Uso de APIs deprecated
+- **Severidade:** LOW
+- **Detecção:** Chamadas a APIs marcadas como deprecated/legacy na versão de runtime/framework em uso. Python: `datetime.utcnow()` / `datetime.utcfromtimestamp()` (deprecated desde 3.12), `imp`, `distutils`. SQLAlchemy 2.x: `Model.query.get()` / `Query.get()` (legacy API, emite `LegacyAPIWarning`). Flask: `@app.before_first_request`. Node/JS: `new Buffer()`, `fs.exists()`, `url.parse()`, `req.connection`. Express: `res.sendfile()`. grep por `utcnow(`, `utcfromtimestamp(`, `\.query\.get\(`, `before_first_request`, `new Buffer\(`, `fs\.exists\(`, `url\.parse\(`, `res\.sendfile\(`.
+- **Por que:** APIs deprecated são mantidas apenas por compatibilidade, emitem warnings e serão removidas em versões futuras — a atualização de runtime vira breaking change silenciosa. `datetime.utcnow()` ainda retorna datetime *naive* (sem timezone), gerando comparações incorretas entre fusos.
+- **Critério de correção:** Substituir pela API suportada equivalente: `datetime.now(timezone.utc)` no lugar de `datetime.utcnow()`; `db.session.get(Model, id)` no lugar de `Model.query.get(id)`; `Buffer.from()` no lugar de `new Buffer()`; `fs.stat()` no lugar de `fs.exists()`. Fixar versões no lockfile e tratar warnings de deprecação no CI (ex.: `-W error::DeprecationWarning`).
+
 ## Regras de aplicação
 
 1. **Todo achado aponta para arquivo:linha exato.** Sem linha, não é achado — é nota.
