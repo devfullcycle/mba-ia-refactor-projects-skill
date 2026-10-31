@@ -2,13 +2,93 @@
 
 O objetivo desse repositório é exibir um exemplo de como criar uma skill para o Claude, que realiza a refatoração arquitetural automatizada de projetos de software. A skill é capaz de identificar problemas de arquitetura e sugerir melhorias, além de gerar relatórios detalhados sobre os problemas encontrados.
 
-### Exemplo de Uso no CLI
+### Como executar a skill
+
+Cada projeto possui uma cópia da skill em `.claude/skills/` (orquestrador `refactor-arch` + sub-skills de análise, auditoria, refatoração e validação). Por isso, a skill deve ser executada **a partir do diretório raiz do projeto desejado**, para que o Claude Code encontre a configuração local.
+
+**Pré-requisitos gerais:**
+
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) instalado e autenticado (comando `claude` disponível no terminal).
+- Dependências do projeto instaladas (necessárias principalmente para a Fase 4, que sobe a aplicação e executa os testes de validação).
+- Executar os comandos abaixo a partir da raiz deste repositório.
+
+> A skill é interativa: a Fase 2 (auditoria) pausa e pede confirmação explícita antes de modificar código na Fase 3. Responda `sim` para prosseguir com a refatoração.
+
+#### 1) `code-smells-project` (Python/Flask — API de E-commerce)
 
 ```bash
-# Executar a skill no projeto com problemas
 cd code-smells-project
+
+# Opcional: preparar ambiente para a validação (Fase 4)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Executar a skill
 claude "/refactor-arch"
 ```
+
+Opcional: antes de refatorar, suba a aplicação com `python app.py` (porta `5000`) para conhecer o comportamento original.
+
+#### 2) `ecommerce-api-legacy` (Node.js/Express — LMS API com checkout)
+
+Requer Node.js 18 ou superior.
+
+```bash
+cd ecommerce-api-legacy
+
+# Opcional: preparar ambiente para a validação (Fase 4)
+npm install
+cp .env.example .env   # ajuste os valores se necessário
+
+# Executar a skill
+claude "/refactor-arch"
+```
+
+Opcional: valide o estado atual com `npm test` e/ou `npm start` (porta `3000`).
+
+#### 3) `task-manager-api` (Python/Flask — API de Task Manager)
+
+```bash
+cd task-manager-api
+
+# Opcional: preparar ambiente para a validação (Fase 4)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # opcional (defaults seguros)
+flask --app app db upgrade    # aplica as migrations
+python seed.py                # popula dados de exemplo
+
+# Executar a skill
+claude "/refactor-arch"
+```
+
+Opcional: valide o estado atual com `pytest` e/ou `python app.py` (porta `5000`).
+
+#### Executando apenas uma fase
+
+Também é possível invocar diretamente uma sub-skill, a partir da raiz do projeto:
+
+```bash
+claude "/refactor-arch-analyze"    # Fase 1 — Análise
+claude "/refactor-arch-audit"      # Fase 2 — Auditoria (somente leitura)
+claude "/refactor-arch-refactor"   # Fase 3 — Refatoração (exige confirmação)
+claude "/refactor-arch-validate"   # Fase 4 — Validação pós-refatoração
+```
+
+#### Reexecutando o fluxo completo
+
+Os três projetos já possuem relatórios em `reports/` (`analysis-*`, `audit-*`, `refactor-*` e `validation-*`). Como o orquestrador usa esses arquivos para decidir o estado do fluxo, ao encontrar um `validation-*.md` ele considerará o processo concluído. Para executar todas as fases novamente do zero, mova os relatórios existentes antes de rodar a skill:
+
+```bash
+# A partir do diretório do projeto (ex.: code-smells-project)
+mv reports reports.bak
+mkdir reports
+claude "/refactor-arch"
+```
+
+Para restaurar os relatórios originais depois: `rm -rf reports && mv reports.bak reports`.
 
 ## Estrutura do Projeto
 
