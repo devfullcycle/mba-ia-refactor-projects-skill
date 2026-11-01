@@ -6,7 +6,12 @@ Exercita o comportamento observável das rotas inventariadas na Fase 1
 Diferenças deliberadas já documentadas em `reports/refactor-code-smells-project.md`:
   * `POST /admin/query` foi REMOVIDA (executava SQL arbitrário) → espera 404.
   * `POST /admin/reset-db` agora exige `Authorization: Bearer <ADMIN_TOKEN>`
-    (401 sem token, 503 se `ADMIN_TOKEN` não configurado).
+    (401 sem token, 403 se `ADMIN_TOKEN` não configurado).
+  * `POST /login` emite `token` de sessão assinado; as rotas de escrita exigem
+    `Authorization: Bearer <token>`.
+  * Produtos (`POST`/`PUT`/`DELETE`) exigem nível `admin`; pedidos exigem nível
+    `cliente` no cadastro e `admin` na mudança de status (401 sem token, 403
+    com nível insuficiente). Cliente só cria pedido para si mesmo.
   * `GET /health` não devolve mais `secret_key`, `db_path`, `debug`.
   * `GET /usuarios` não devolve mais o campo `senha`.
   * Senhas passam a ser hash com salt (login continua aceitando o seed legado).
@@ -38,6 +43,15 @@ results = []
 def check(name, condition, detail=""):
     results.append((name, bool(condition), detail))
     print(f"[{'PASS' if condition else 'FAIL'}] {name}" + (f" — {detail}" if detail else ""))
+
+
+def login_token(client, email, senha):
+    resposta = client.post("/login", json={"email": email, "senha": senha})
+    return resposta.get_json().get("token")
+
+
+def auth_header(token):
+    return {"Authorization": f"Bearer {token}"}
 
 
 def main():
@@ -113,11 +127,24 @@ def run_checks(client):
         f"status={r.status_code} total={r.get_json().get('total')}",
     )
 
-    # --- produtos: escrita --------------------------------------------------
-    r = client.post("/produtos", json={"nome": "Cabo HDMI", "preco": 29.9, "estoque": 7, "categoria": "informatica"})
+    # --- produtos: escrita (admin) ------------------------------------------
+    admin_token = login_token(client, "admin@loja.com", "admin123")
+    cliente_token = login_token(client, "joao@email.com", "123456")
+    admin_headers = auth_header(admin_token)
+    cliente_headers = auth_header(cliente_token)
+    check("Login admin emite token", isinstance(admin_token, str) and bool(admin_token), f"token_presente={bool(admin_token)}")
+    check("Login cliente emite token", isinstance(cliente_token, str) and bool(cliente_token), f"token_presente={bool(cliente_token)}")
+
+    payload_produto = {"nome": "Cabo HDMI", "preco": 29.9, "estoque": 7, "categoria": "informatica"}
+    r = client.post("/produtos", json=payload_produto)
+    check("POST /produtos sem token → 401 (SEC-04)", r.status_code == 401, f"status={r.status_code}")
+    r = client.post("/produtos", json=payload_produto, headers=cliente_headers)
+    check("POST /produtos com token de cliente → 403 (SEC-04)", r.status_code == 403, f"status={r.status_code}")
+
+    r = client.post("/produtos", json=payload_produto, headers=admin_headers)
     body = r.get_json()
     novo_id = body.get("dados", {}).get("id")
-    check("POST /produtos válido → 201 com id", r.status_code == 201 and isinstance(novo_id, int), f"status={r.status_code} body={body}")
+    check("POST /produtos válido com admin → 201 com id", r.status_code == 201 and isinstance(novo_id, int), f"status={r.status_code} body={body}")
 
     for nome, payload, esperado in (
         ("POST /produtos sem preço/estoque", {"nome": "X"}, 400),
@@ -126,15 +153,22 @@ def run_checks(client):
         ("POST /produtos preco textual", {"nome": "X", "preco": "abc", "estoque": 1}, 400),
         ("POST /produtos sem body JSON", None, 400),
     ):
-        r = client.post("/produtos", json=payload) if payload is not None else client.post("/produtos", data="nao-json", content_type="text/plain")
+        if payload is not None:
+            r = client.post("/produtos", json=payload, headers=admin_headers)
+        else:
+            r = client.post("/produtos", data="nao-json", content_type="text/plain", headers=admin_headers)
         check(f"{nome} → {esperado}", r.status_code == esperado, f"status={r.status_code} body={r.get_json()}")
 
-    r = client.put(f"/produtos/{novo_id}", json={"nome": "Cabo HDMI 2.1", "preco": 39.9, "estoque": 5, "categoria": "informatica"})
-    check("PUT /produtos/<id> válido → 200", r.status_code == 200, f"status={r.status_code}")
+    r = client.put("/produtos/9999", json={"nome": "n", "preco": 1, "estoque": 1})
+    check("PUT /produtos/<id> sem token → 401 (SEC-04)", r.status_code == 401, f"status={r.status_code}")
+    r = client.put(f"/produtos/{novo_id}", json={"nome": "Cabo HDMI 2.1", "preco": 39.9, "estoque": 5, "categoria": "informatica"}, headers=admin_headers)
+    check("PUT /produtos/<id> válido com admin → 200", r.status_code == 200, f"status={r.status_code}")
     r = client.get(f"/produtos/{novo_id}")
     check("PUT refletido na leitura", r.get_json()["dados"]["nome"] == "Cabo HDMI 2.1", f"nome={r.get_json()['dados']['nome']}")
-    r = client.put("/produtos/9999", json={"nome": "n", "preco": 1, "estoque": 1})
+    r = client.put("/produtos/9999", json={"nome": "n", "preco": 1, "estoque": 1}, headers=admin_headers)
     check("PUT /produtos/9999 → 404", r.status_code == 404, f"status={r.status_code}")
+    r = client.delete(f"/produtos/{novo_id}")
+    check("DELETE /produtos/<id> sem token → 401 (SEC-04)", r.status_code == 401, f"status={r.status_code}")
 
     # --- usuarios -----------------------------------------------------------
     r = client.get("/usuarios")
@@ -173,9 +207,9 @@ def run_checks(client):
     body = r.get_json()
     check("POST /login válido (seed legado) → 200", r.status_code == 200 and body.get("sucesso") is True, f"status={r.status_code} body={body}")
     check(
-        "POST /login NÃO devolve token nem campo senha",
-        "token" not in body.get("dados", {}) and "senha" not in body.get("dados", {}),
-        f"dados={body.get('dados')}",
+        "POST /login devolve token de sessão e NÃO devolve campo senha",
+        isinstance(body.get("token"), str) and bool(body["token"]) and "senha" not in body.get("dados", {}),
+        f"token_presente={bool(body.get('token'))} dados={body.get('dados')}",
     )
     r = client.post("/login", json={"email": "novo@email.com", "senha": "segredo123"})
     check("POST /login usuário novo (hash) → 200", r.status_code == 200, f"status={r.status_code}")
@@ -187,29 +221,45 @@ def run_checks(client):
     r = client.post("/login", json={"email": "' OR '1'='1", "senha": "' OR '1'='1"})
     check("POST /login com injeção → 401 (SEC-01 corrigido)", r.status_code == 401, f"status={r.status_code}")
 
-    # --- pedidos ------------------------------------------------------------
-    r = client.post("/pedidos", json={"usuario_id": 2, "itens": [{"produto_id": 2, "quantidade": 2}, {"produto_id": 3, "quantidade": 1}]})
+    # --- pedidos (cliente) --------------------------------------------------
+    payload_pedido = {"usuario_id": 2, "itens": [{"produto_id": 2, "quantidade": 2}, {"produto_id": 3, "quantidade": 1}]}
+    r = client.post("/pedidos", json=payload_pedido)
+    check("POST /pedidos sem token → 401 (SEC-04)", r.status_code == 401, f"status={r.status_code}")
+    r = client.post("/pedidos", json=payload_pedido, headers=admin_headers)
+    check("POST /pedidos com token de admin → 403 (SEC-04)", r.status_code == 403, f"status={r.status_code}")
+    r = client.post(
+        "/pedidos",
+        json={"usuario_id": 3, "itens": [{"produto_id": 2, "quantidade": 1}]},
+        headers=cliente_headers,
+    )
+    check("POST /pedidos para outro usuário → 403 (SEC-04)", r.status_code == 403, f"status={r.status_code}")
+
+    r = client.post("/pedidos", json=payload_pedido, headers=cliente_headers)
     body = r.get_json()
     pedido_id = body.get("dados", {}).get("pedido_id")
     total = body.get("dados", {}).get("total")
     esperado = round(89.90 * 2 + 299.90, 2)
-    check("POST /pedidos válido → 201", r.status_code == 201 and isinstance(pedido_id, int), f"status={r.status_code} body={body}")
+    check("POST /pedidos válido com cliente → 201", r.status_code == 201 and isinstance(pedido_id, int), f"status={r.status_code} body={body}")
     check(f"POST /pedidos calcula total={esperado}", total == esperado, f"total={total}")
 
     r = client.get("/produtos/2")
     check("POST /pedidos baixa estoque do produto 2 (50 → 48)", r.get_json()["dados"]["estoque"] == 48, f"estoque={r.get_json()['dados']['estoque']}")
 
-    r = client.post("/pedidos", json={"usuario_id": 2, "itens": [{"produto_id": 2, "quantidade": 99999}]})
+    r = client.post("/pedidos", json={"usuario_id": 2, "itens": [{"produto_id": 2, "quantidade": 99999}]}, headers=cliente_headers)
     check("POST /pedidos estoque insuficiente → 400", r.status_code == 400, f"status={r.status_code} body={r.get_json()}")
     r = client.get("/produtos/2")
     check("Estoque NÃO foi debitado no pedido rejeitado (rollback)", r.get_json()["dados"]["estoque"] == 48, f"estoque={r.get_json()['dados']['estoque']}")
 
-    r = client.post("/pedidos", json={"usuario_id": 2, "itens": [{"produto_id": 9999, "quantidade": 1}]})
+    r = client.post("/pedidos", json={"usuario_id": 2, "itens": [{"produto_id": 9999, "quantidade": 1}]}, headers=cliente_headers)
     check("POST /pedidos produto inexistente → 400", r.status_code == 400, f"status={r.status_code}")
-    r = client.post("/pedidos", json={"usuario_id": 2, "itens": []})
+    r = client.post("/pedidos", json={"usuario_id": 2, "itens": []}, headers=cliente_headers)
     check("POST /pedidos sem itens → 400", r.status_code == 400, f"status={r.status_code}")
-    r = client.post("/pedidos", json={"usuario_id": 9999, "itens": [{"produto_id": 1, "quantidade": 1}]})
-    check("POST /pedidos usuário inexistente → 400", r.status_code == 400, f"status={r.status_code} body={r.get_json()}")
+    r = client.post("/pedidos", json={"usuario_id": 9999, "itens": [{"produto_id": 1, "quantidade": 1}]}, headers=cliente_headers)
+    check(
+        "POST /pedidos para usuário inexistente → 403 (não permite enumerar usuários)",
+        r.status_code == 403,
+        f"status={r.status_code} body={r.get_json()}",
+    )
 
     r = client.get("/pedidos/usuario/2")
     body = r.get_json()
@@ -225,10 +275,12 @@ def run_checks(client):
     check("GET /pedidos → 200 com 1 pedido", r.status_code == 200 and len(r.get_json()["dados"]) == 1, f"status={r.status_code}")
 
     r = client.put(f"/pedidos/{pedido_id}/status", json={"status": "aprovado"})
-    check("PUT /pedidos/<id>/status → 200", r.status_code == 200, f"status={r.status_code}")
-    r = client.put(f"/pedidos/{pedido_id}/status", json={"status": "invalido"})
+    check("PUT /pedidos/<id>/status sem token → 401 (SEC-04)", r.status_code == 401, f"status={r.status_code}")
+    r = client.put(f"/pedidos/{pedido_id}/status", json={"status": "aprovado"}, headers=admin_headers)
+    check("PUT /pedidos/<id>/status com admin → 200", r.status_code == 200, f"status={r.status_code}")
+    r = client.put(f"/pedidos/{pedido_id}/status", json={"status": "invalido"}, headers=admin_headers)
     check("PUT /pedidos/<id>/status inválido → 400", r.status_code == 400, f"status={r.status_code}")
-    r = client.put("/pedidos/9999/status", json={"status": "aprovado"})
+    r = client.put("/pedidos/9999/status", json={"status": "aprovado"}, headers=admin_headers)
     check("PUT /pedidos/9999/status → 404", r.status_code == 404, f"status={r.status_code}")
 
     # --- relatorio ----------------------------------------------------------

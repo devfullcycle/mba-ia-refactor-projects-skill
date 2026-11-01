@@ -14,6 +14,12 @@ class ValidationError extends AppError {
     }
 }
 
+class UnauthorizedError extends AppError {
+    constructor(message = 'Unauthorized') {
+        super(message, 401, 'UNAUTHORIZED');
+    }
+}
+
 class NotFoundError extends AppError {
     constructor(message = 'Not found') {
         super(message, 404, 'NOT_FOUND');
@@ -26,4 +32,10 @@ class PaymentDeniedError extends AppError {
     }
 }
 
-module.exports = { AppError, ValidationError, NotFoundError, PaymentDeniedError };
+module.exports = {
+    AppError,
+    ValidationError,
+    UnauthorizedError,
+    NotFoundError,
+    PaymentDeniedError,
+};

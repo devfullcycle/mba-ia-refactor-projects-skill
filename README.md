@@ -2,7 +2,42 @@
 
 O objetivo desse repositório é exibir um exemplo de como criar uma skill para o Claude, que realiza a refatoração arquitetural automatizada de projetos de software. A skill é capaz de identificar problemas de arquitetura e sugerir melhorias, além de gerar relatórios detalhados sobre os problemas encontrados.
 
-### Como executar a skill
+## Construção da Skill
+
+### Decisões de design
+
+- **Orquestrador + 4 sub-skills, uma por fase.** O `refactor-arch` não analisa nem refatora: ele lê `reports/`, identifica o estado e carrega a sub-skill adequada (`analyze`, `audit`, `refactor`, `validate`).
+- **Contexto limpo por fase.** Cada sub-skill lê apenas as referências da sua fase, em vez de carregar um único `SKILL.md` com todo o processo.
+- **Gates explícitos.** Fases 1, 2 e 4 não alteram código-fonte (apenas leem e geram relatório); só a Fase 3 escreve código, e apenas após auditoria + confirmação explícita. A Fase 4 é o gate de conclusão.
+- **Estado derivado dos relatórios.** A máquina de estados do orquestrador usa a existência de `reports/analysis-*`, `audit-*`, `refactor-*` e `validation-*` para decidir o próximo passo, tornando o fluxo retomável.
+- **`SKILL.md` curto + referências especializadas.** Os 7 arquivos em `references/` concentram o detalhe: Fase 1 (`stack-detection`, `architecture-detection`, `report-template`), Fase 2 (`anti-patterns`, `audit-report-template`) e Fases 3/4 (`mvc-guidelines`, `refactor-playbook`).
+- **Cópia por projeto.** Cada projeto tem sua cópia em `.claude/skills/`, para que o Claude Code encontre a skill ao executar a partir da raiz do projeto.
+
+### Anti-patterns do catálogo
+
+- **19 anti-patterns**, em 5 categorias: 6 de segurança (SEC), 3 de arquitetura (ARCH), 1 de performance (PERF), 8 de qualidade (QUAL) e 1 de APIs deprecated (DEP).
+- **Critério de seleção: cobrir os problemas reais dos 3 projetos de teste**, não um catálogo teórico genérico.
+- Exemplos:
+  - **SEC:** SQL Injection, credenciais hardcoded, hash fraco, rota sem autenticação/autorização, XSS e log com dados sensíveis.
+  - **ARCH:** lógica de negócio no controller, acesso a dados no controller e model com responsabilidades duplas.
+  - **PERF:** N+1 queries.
+  - **QUAL:** God Class/File, validação ausente, tratamento de erro genérico, estado global mutável, dependência morta, ausência de migrations, configuração hardcoded e ausência de testes.
+  - **DEP:** uso de APIs deprecated (`datetime.utcnow()`, `Query.get()`), detectado no `task-manager-api`.
+- Cada item traz severidade, regra de detecção, motivo e critério de correção — o que padroniza o achado e evita severidade inflada.
+
+### Agnosticismo de tecnologia
+
+- **Detecção por evidência:** a Fase 1 parte de manifestos, dependências e código, com heurísticas para vários ecossistemas (`stack-detection.md`), e não de nomes de pastas ou suposições.
+- **Camadas conceituais, não nomes fixos:** `mvc-guidelines.md` define responsabilidades e uma tabela de tradução por ecossistema (Flask, Django, Express, Spring, Rails, Laravel, Go, ASP.NET). Quando o framework tem convenção própria, a skill segue a convenção do framework.
+- **Comandos derivados da análise:** boot e testes vêm do que foi detectado na Fase 1; não há comando de stack embutido no fluxo principal.
+- **Escopo de validação:** a skill foi executada em Python/Flask (2 projetos) e Node.js/Express (1). Os demais ecossistemas são cobertos pelas heurísticas e tabelas de mapeamento, mas não foram validados empiricamente.
+
+### Desafios encontrados e como foram resolvidos
+
+- **Tamanho/contexto dos `SKILL.md`:** um único arquivo com detecção, catálogo, templates e playbook ficaria longo e caro em tokens. **Resolução:** o `SKILL.md` de cada fase ficou com objetivo, pré-requisitos, passos e regras; o detalhe foi movido para `references/`, lido sob demanda.
+- **Projeto já parcialmente organizado (`task-manager-api`):** havia risco de sobrescrever uma estrutura existente. **Resolução:** a skill obriga análise e auditoria antes de qualquer alteração; a Fase 3 só inicia após confirmação explícita.
+
+## Como executar a skill
 
 Cada projeto possui uma cópia da skill em `.claude/skills/` (orquestrador `refactor-arch` + sub-skills de análise, auditoria, refatoração e validação). Por isso, a skill deve ser executada **a partir do diretório raiz do projeto desejado**, para que o Claude Code encontre a configuração local.
 
@@ -352,7 +387,7 @@ code-smells-project/
 ├── models/produto.py         entidades/invariantes
 ├── database/                 connection.py (por request) + schema.py (DDL/seed)
 ├── middleware/               error_handler.py + auth.py
-├── tests/smoke_contract.py   smoke test (58 checks)
+├── tests/smoke_contract.py   smoke test (68 checks)
 └── .env.example
 ```
 
@@ -363,7 +398,7 @@ code-smells-project/
 | Maior arquivo | 314 (`models.py`) | 139 (`pedido_repository.py`) |
 | Camadas | 0 (flat) | 8 (routes, controllers, schemas, services, repositories, models, database, middleware) |
 | Queries parametrizadas | Não | Sim (100%) |
-| Testes | 0 | 58 checks |
+| Testes | 0 | 68 checks |
 
 #### 2) ecommerce-api-legacy (Node.js/Express)
 **Antes:** Estrutura monolítica centrada em `src/AppManager.js` com toda lógica HTTP, regras de negócio, acesso a dados e configuração hardcoded em um único local. Configurações sensíveis em `src/utils.js`. Criptografia insegura em `src/utils.js`.
@@ -407,8 +442,9 @@ code-smells-project/
 - [x] Entry point claro (app.py)
 - [x] Aplicação inicia sem erros
 - [x] Endpoints originais continuam respondendo (19/19 rotas validadas)
+- [x] Autorização por nível nas rotas de escrita (SEC-04): produtos → `admin`; pedidos → `cliente` (próprio usuário); status → `admin`
 
-**Validação pós-refatoração:** `tests/smoke_contract.py` - 58/58 checks passando. Boot real OK. CRITICAL/HIGH todos resolvidos.
+**Validação pós-refatoração:** `tests/smoke_contract.py` - 68/68 checks passando. Boot real OK. CRITICAL/HIGH todos resolvidos.
 
 #### Checklist - ecommerce-api-legacy (Node.js/Express)
 **Fase 1 — Análise**
@@ -474,8 +510,8 @@ Os projetos foram refatorados pela skill nos seus respectivos diretórios com c�
 - **Agnóstica à tecnologia:** A skill foi copiada com sucesso para `ecommerce-api-legacy/` (Node.js/Express) e `task-manager-api/` (Python/Flask) e executou as 3 fases em ambos os casos, demonstrando reutilização.
 - **Adaptação ao nível de organização:** Em **code-smells-project** (monolito completamente desestruturado, 4 arquivos), a skill fez uma reorganização radical para MVC com criação de múltiplas camadas (routes, controllers, services, repositories, schemas, middleware, database). Em **task-manager-api** (já parcialmente organizado com models/routes/services), a skill identificou problemas mesmo com estrutura existente e propôs melhorias incrementais sem quebrar a aplicação. Em **ecommerce-api-legacy** (Node.js/Express monolítico), adaptou-se à stack diferente mantendo o mesmo processo de análise/auditoria/refatoração.
 - **Detecção abrangente:** Encontrou tanto problemas arquiteturais (God Class/Files, lógica no controller, SQL fora de repositório) quanto de segurança (SQL Injection, credenciais hardcoded, senhas fracas/expostas, falta de auth) e performance (N+1). Também detectou **APIs deprecated** (`datetime.utcnow()`, `Query.get()` no task-manager-api).
-- **Segurança proativa:** Em code-smells-project, removeu `POST /admin/query` (executor SQL arbitrário) e protegeu `POST /admin/reset-db` com token, além de neutralizar SQL Injection com queries parametrizadas e remover exposição de segredos/senhas.
-- **Validação rigorosa:** A Fase 2 pausou solicitando confirmação antes da refatoração. A Fase 3 validou (boot + smoke tests). O projeto 1 teve validação automatizada com 58 checks passando.
+- **Segurança proativa:** Em code-smells-project, removeu `POST /admin/query` (executor SQL arbitrário), protegeu `POST /admin/reset-db` com token estático, passou o `/login` a emitir token de sessão e aplicou autorização por nível nas rotas de escrita (produtos → `admin`; cadastro de pedido → `cliente`, apenas em nome próprio), além de neutralizar SQL Injection com queries parametrizadas e remover exposição de segredos/senhas.
+- **Validação rigorosa:** A Fase 2 pausou solicitando confirmação antes da refatoração. A Fase 3 validou (boot + smoke tests). O projeto 1 teve validação automatizada com 68 checks passando, incluindo os cenários de autorização `401`/`403`.
 - **Qualidade dos relatórios:** Relatórios seguem template padronizado com achados por severidade, arquivo/linha exatos, evidências, impacto e recomendação - facilitando rastreabilidade.
 - **Desafios observados:** Projetos com estrutura parcial exigem maior sutileza para não sobrescrever organização existente de forma destrutiva; stacks diferentes requerem heurísticas de detecção adequadas (linguagem/framework). Ajustes nos arquivos de referência foram necessários para garantir cobertura mínima (>=5 findings, incluindo CRITICAL/HIGH) em todos os 3 projetos.
 - **Resultado geral:** Todos os critérios obrigatórios foram atendidos nos 3 projetos - stack detectada corretamente, >=5 findings com pelo menos 1 CRITICAL/HIGH, aplicação funcional após refatoração.

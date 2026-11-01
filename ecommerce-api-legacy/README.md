@@ -34,11 +34,13 @@ Authorization: Bearer <ADMIN_TOKEN>
 
 Sem `ADMIN_TOKEN` configurado, essas rotas respondem `503` (fail closed). Com token inválido, `401`.
 
+`POST /api/checkout` é público para cadastro de um novo usuário (a conta é criada com o `pwd` enviado). Se o e-mail já pertence a uma conta, o checkout exige a senha do titular em `pwd`; sem ela ou com senha incorreta, responde `401 Credenciais inválidas`. O dono da matrícula nunca é escolhido por um id enviado no body.
+
 ## Endpoints
 
 | Método | Rota | Autenticação | Resposta |
 |---|---|---|---|
-| `POST` | `/api/checkout` | pública | `200 {"msg":"Sucesso","enrollment_id":N}`; `400 Bad Request`; `400 Pagamento recusado`; `404 Curso não encontrado` |
+| `POST` | `/api/checkout` | pública para novo usuário; senha do titular para conta existente | `200 {"msg":"Sucesso","enrollment_id":N}`; `400 Bad Request`; `400 Pagamento recusado`; `401 Credenciais inválidas`; `404 Curso não encontrado` |
 | `GET` | `/api/admin/financial-report` | admin | `200 [{course, revenue, students:[{student, paid}]}]` |
 | `DELETE` | `/api/users/:id` | admin | `200 Usuário deletado com sucesso.`; `404 Usuário não encontrado` |
 
@@ -76,3 +78,5 @@ src/
 - O `DELETE /api/users/:id` remove pagamentos e matrículas na mesma transação, em vez de deixar registros órfãos.
 - Erros internos retornam `500 Internal Server Error` genérico, sem vazar detalhes do banco.
 - Rotas administrativas passaram a exigir autenticação; ajuste clientes que as chamavam anonimamente.
+- Checkout em nome de uma conta existente passou a exigir a senha do titular (`401` sem ela ou com senha incorreta); antes o e-mail do body era aceito sem prova de posse (SEC-04/IDOR).
+- Usuário novo só é persistido depois da aprovação do pagamento, dentro da mesma transação da matrícula/pagamento/auditoria.

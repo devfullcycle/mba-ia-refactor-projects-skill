@@ -17,6 +17,9 @@ class Config:
     # Segredo obrigatório em runtime; em testes pode ser injetado.
     SECRET_KEY = os.environ.get("SECRET_KEY")
 
+    # Validade do token de sessão emitido no login (padrão: 8 horas).
+    TOKEN_MAX_AGE_SECONDS = int(os.getenv("TOKEN_MAX_AGE_SECONDS", "28800"))
+
     DEBUG = _as_bool(os.getenv("FLASK_DEBUG"), default=False)
 
     HOST = os.getenv("HOST", "0.0.0.0")
@@ -26,6 +29,10 @@ class Config:
 
     APP_VERSION = os.getenv("APP_VERSION", "1.0.0")
     ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+    # Níveis de usuário (coluna `usuarios.tipo` no seed)
+    PERFIL_ADMIN = "admin"
+    PERFIL_CLIENTE = "cliente"
 
     # Valores de domínio antes espalhados no código (controllers.py / models.py)
     CATEGORIAS_VALIDAS = (

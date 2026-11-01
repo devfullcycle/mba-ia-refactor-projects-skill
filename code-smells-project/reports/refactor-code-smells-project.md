@@ -45,7 +45,7 @@ code-smells-project/
 ├── models/produto.py         invariantes de entidade (Produto, ItemPedido)
 ├── database/                 connection.py (por request) + schema.py (DDL/seed)
 ├── middleware/               error_handler.py (erro central) + auth.py (admin)
-├── tests/smoke_contract.py   smoke test de contrato (58 checks)
+├── tests/smoke_contract.py   smoke test de contrato (68 checks)
 ├── .env.example
 └── reports/
 ```
@@ -57,7 +57,7 @@ code-smells-project/
 | Maior arquivo (LOC) | 314 (`models.py`) | 139 (`pedido_repository.py`) |
 | Camadas | 0 (flat) | 8 (routes, controllers, schemas, services, repositories, models, database, middleware) |
 | Queries parametrizadas | não | sim (100%) |
-| Testes | 0 | 58 checks (smoke de contrato) |
+| Testes | 0 | 68 checks (smoke de contrato) |
 
 O aumento de LOC reflete a separação de responsabilidades (um arquivo por
 recurso/camada) e a extração de validação, erros e config — não crescimento
@@ -70,7 +70,7 @@ de complexidade em um único ponto.
 | **SEC-01** SQL Injection | CRITICAL | Todas as queries passaram a usar placeholders `?`; o endpoint `/admin/query` foi removido | `repositories/produto_repository.py`, `usuario_repository.py`, `pedido_repository.py`; remoção em `routes/relatorio_routes.py` |
 | **SEC-02** Credencial hardcoded | CRITICAL | `SECRET_KEY` vem de `SECRET_KEY` env; `/health` deixou de devolver `secret_key`/`db_path`/`debug` | `config.py`, `app.py:22`, `services/health_service.py` |
 | **SEC-03** Senhas em texto plano | CRITICAL | Hash com salt (`generate_password_hash`/`check_password_hash`); `senha` fora das respostas; upgrade transparente de seed legado no login | `services/usuario_service.py`, `repositories/usuario_repository.py:listar/buscar_por_id` |
-| **SEC-04** Rotas sem auth | HIGH | `POST /admin/reset-db` exige `Authorization: Bearer <ADMIN_TOKEN>` (fail-closed) | `middleware/auth.py`, `routes/relatorio_routes.py:36` |
+| **SEC-04** Rotas sem auth | HIGH | `POST /admin/reset-db` exige `Authorization: Bearer <ADMIN_TOKEN>` (fail-closed). `/login` emite token de sessão assinado; escrita de produtos exige nível `admin`, cadastro de pedido exige nível `cliente` (só para o próprio usuário) e status de pedido exige `admin` | `middleware/auth.py`, `services/auth_service.py`, `routes/produto_routes.py`, `routes/pedido_routes.py`, `routes/relatorio_routes.py:36` |
 | **SEC-06** PII/dados sensíveis em log | LOW | `print` de e-mails e notificações substituídos por `logging` sem PII | `services/notificacao_service.py`; `controllers/__init__.py` sem `print` de e-mail |
 | **ARCH-01** Lógica de negócio no Controller | HIGH | Regras (cálculo de total, estoque, faixas de desconto, status) extraídas para services; controllers só orquestram | `services/pedido_service.py`, `services/produto_service.py`, `controllers/__init__.py` |
 | **ARCH-02** Acesso a dados no Controller | HIGH | Todo SQL saiu de `controllers.py` e `app.py` para repositories | `repositories/`; `services/admin_service.py`; `services/health_service.py` |
@@ -82,7 +82,7 @@ de complexidade em um único ponto.
 | **QUAL-04** Estado global mutável | MEDIUM | Conexão passou a ter escopo de request (`flask.g`) com teardown; sem singleton | `database/connection.py` |
 | **QUAL-05** Imports/config mortos | LOW | Removidos `import os`/`import sqlite3` mortos; `SECRET_KEY` agora é usada de verdade | `database/`, `models/` |
 | **QUAL-07** Config hardcoded | LOW | Host, porta, debug, caminho do banco e versão/ambiente lidos de env | `config.py`, `.env.example` |
-| **QUAL-08** Sem testes | LOW | Smoke test de contrato com 58 checks (antes e depois da refatoração) | `tests/smoke_contract.py` |
+| **QUAL-08** Sem testes | LOW | Smoke test de contrato com 68 checks (inclui autorização por nível) | `tests/smoke_contract.py` |
 
 ### Não resolvidos nesta fase (documentados como trabalho futuro)
 
@@ -99,6 +99,10 @@ Todas são exigidas pela auditoria e foram validadas pelo smoke test.
 |---|---|---|
 | `POST /admin/query` | **Removida** (404) | Executava SQL arbitrário do body (SEC-01/SEC-04) — decisão confirmada pelo usuário |
 | `POST /admin/reset-db` | Exige `Authorization: Bearer <ADMIN_TOKEN>`; 401 sem token, 403 se `ADMIN_TOKEN` ausente no processo | SEC-04 |
+| `POST /login` | Passa a devolver `token` de sessão assinado (além de `dados`, sem `senha`) | SEC-04 |
+| `POST`/`PUT`/`DELETE /produtos` | Exigem `Authorization: Bearer <token>` de usuário nível `admin`; 401 sem token, 403 com nível insuficiente | SEC-04 |
+| `POST /pedidos` | Exige nível `cliente`; o `usuario_id` do body deve ser o do usuário autenticado; 401 sem token, 403 para outro usuário/nível | SEC-04 |
+| `PUT /pedidos/<id>/status` | Exige nível `admin`; 401 sem token, 403 com nível insuficiente | SEC-04 |
 | `GET /health` | Não devolve mais `secret_key`, `db_path` nem `debug` | SEC-02/QUAL-07 |
 | `GET /usuarios`, `GET /usuarios/<id>` | Não devolvem mais o campo `senha` | SEC-03 |
 | `POST /produtos` (payload malformado) | Passa a devolver 400 com mensagem de validação (antes podia virar 500) | QUAL-02 |
@@ -113,7 +117,7 @@ Formato de resposta preservado em todas as rotas de sucesso: `{"dados": ..., "su
 incluindo os comportamentos inseguros então vigentes (SQLi vazando tabela, `secret_key` no
 `/health`, senha exposta, `/admin/query` executando SQL).
 
-**Depois da refatoração**: **58/58 checks** (58 = 45 originais + 13 de segurança/validação).
+**Depois da refatoração**: **68/68 checks** (68 = 45 originais + 13 de segurança/validação + 10 de autorização por nível).
 
 ### Boot real (não apenas test client)
 
@@ -128,17 +132,23 @@ todas as rotas exercitadas via `curl`:
 | 4 | GET | `/produtos/busca?q=Mouse` | 200 | `total: 1` |
 | 5 | GET | `/produtos/1` | 200 | Notebook Gamer 5999.99 |
 | 6 | GET | `/produtos/9999` | 404 | `Produto não encontrado` |
-| 7 | POST | `/produtos` | 201 | `{"dados":{"id":11}}` |
-| 8 | POST | `/produtos` (sem preço) | 400 | `Preço é obrigatório` |
-| 9 | PUT | `/produtos/11` | 200 | atualização refletida |
+| 7 | POST | `/produtos` (sem token) | 401 | `Token de acesso ausente` |
+| 7b | POST | `/produtos` (token cliente) | 403 | `Perfil sem permissão` |
+| 7c | POST | `/produtos` (token admin) | 201 | `{"dados":{"id":11}}` |
+| 8 | POST | `/produtos` (sem preço, admin) | 400 | `Preço é obrigatório` |
+| 9 | PUT | `/produtos/11` (admin) | 200 | atualização refletida |
 | 10 | GET | `/usuarios` | 200 | 3 usuários, **sem `senha`** |
 | 11 | POST | `/usuarios` | 201 | `{"dados":{"id":4}}` |
-| 12 | POST | `/login` | 200 | sem token, sem senha |
+| 12 | POST | `/login` | 200 | devolve `token` de sessão; sem senha |
 | 13 | POST | `/login` (senha errada) | 401 | `Email ou senha inválidos` |
-| 14 | POST | `/pedidos` | 201 | `total: 179.8`, estoque debitado |
+| 14 | POST | `/pedidos` (token cliente) | 201 | `total: 479.7`, estoque debitado |
+| 14b | POST | `/pedidos` (sem token) | 401 | `Token de acesso ausente` |
+| 14c | POST | `/pedidos` (token admin) | 403 | `Perfil sem permissão` |
+| 14d | POST | `/pedidos` (outro `usuario_id`) | 403 | `Cliente só pode criar pedido para si mesmo` |
 | 15 | GET | `/pedidos` | 200 | 1 pedido com itens e `produto_nome` |
 | 16 | GET | `/pedidos/usuario/2` | 200 | 1 pedido com itens |
-| 17 | PUT | `/pedidos/1/status` | 200 | `Status atualizado` |
+| 17 | PUT | `/pedidos/1/status` (admin) | 200 | `Status atualizado` |
+| 17b | PUT | `/pedidos/1/status` (sem token) | 401 | `Token de acesso ausente` |
 | 18 | GET | `/relatorios/vendas` | 200 | agregados e desconto corretos |
 | 19 | POST | `/admin/query` | 404 | **removida** |
 | 20 | POST | `/admin/reset-db` (sem token) | 401 | `Token administrativo ausente` |
@@ -150,12 +160,18 @@ todas as rotas exercitadas via `curl`:
 - `POST /login` com `' OR '1'='1` → 401 — **bypass de login neutralizado**.
 - Senha persistida como `scrypt:32768:8:...` — **hash com salt**.
 - Pedido rejeitado por estoque **não debita** estoque (rollback verificado).
+- `POST /produtos` sem token → 401; com token de cliente → 403; com admin → 201.
+- `POST /pedidos` sem token → 401; com admin → 403; para outro usuário → 403;
+  com cliente dono → 201.
+- Token de sessão é assinado com `SECRET_KEY`, expira em `TOKEN_MAX_AGE_SECONDS`
+  e o nível é relido do banco a cada requisição.
 
 ## 5. Checklist da Fase 3
 
 - [x] Aplicação sobe sem erros (`python app.py`, porta 5099)
 - [x] Toda rota inventariada responde no mesmo path/verbo; formato preservado
 - [x] Rotas de escrita rejeitam payload malformado com 400
+- [x] Rotas de escrita exigem token de sessão e nível adequado (SEC-04)
 - [x] Nenhuma query interpolada — grep confirma que f-strings só usam nomes de coluna/tabela fixos
 - [x] Nenhum segredo literal no código (`minha-chave-super-secreta-123` removida)
 - [x] Responses não expõem `senha`, `secret_key`, `db_path`
@@ -179,9 +195,15 @@ registros legados, eliminando a comparação em texto puro do caminho de login.
 
 ## 7. Limitações e trabalho futuro
 
-- **Autenticação real:** só `/admin/reset-db` está protegida. As demais rotas de
-  escrita continuam públicas (o `/login` não emite token, preservando o contrato
-  original). Recomenda-se JWT/sessão + guarda nas rotas de clientes.
+- **Autenticação de rotas de escrita:** `/login` emite token assinado
+  (`services/auth_service.py`), e as rotas de produto/pedido de escrita exigem
+  o nível correspondente (`admin`/`cliente`). Rotas de leitura (`GET /usuarios`,
+  `GET /pedidos`, `GET /pedidos/usuario/<id>`, `GET /relatorios/vendas`)
+  continuam públicas para preservar o contrato original; protegê-las é o
+  próximo passo recomendado de SEC-04.
+- **Token stateless:** não há revogação individual antes do vencimento
+  (`TOKEN_MAX_AGE_SECONDS`, padrão 8h). Para logout/revogação, adicionar
+  lista de revogação ou versão de token por usuário.
 - **PERF-01 residual:** a validação de itens em `POST /pedidos` ainda faz 1 query
   por item; um `IN (...)` único resolveria por completo.
 - **QUAL-06/Migrations:** adotar Alembic/Flask-Migrate e reforçar integridade
@@ -194,3 +216,30 @@ registros legados, eliminando a comparação em texto puro do caminho de login.
 - **Venv de validação:** as execuções usaram um venv isolado em `/tmp/opencode/refactor-venv`
   (Flask 3.1.1 + pytest); não foi adicionado ao repositório. `requirements.txt` não
   foi alterado (nenhuma dependência nova foi introduzida).
+
+## 8. Atualização — autorização por nível (SEC-04)
+
+A primeira rodada da Fase 3 protegeu apenas `POST /admin/reset-db`. Esta
+atualização fecha o escopo de escrita de negócio apontado na auditoria:
+
+| Rota | Nível exigido | Regra adicional |
+|---|---|---|
+| `POST /produtos` | `admin` | — |
+| `PUT /produtos/<id>` | `admin` | — |
+| `DELETE /produtos/<id>` | `admin` | — |
+| `POST /pedidos` | `cliente` | `usuario_id` deve ser o do usuário autenticado |
+| `PUT /pedidos/<id>/status` | `admin` | — |
+
+**Fluxo:** `POST /login` autentica pelo seed (`admin@loja.com`/`admin123`,
+`joao@email.com`/`123456`, `maria@email.com`/`senha123`), lê `usuarios.tipo` e
+emite `token` assinado com `SECRET_KEY` via `itsdangerous`
+(`services/auth_service.py`). O guard `require_tipos` valida assinatura e
+validade, relê o usuário no banco e compara o nível; ausência/expiração do
+token → `401`, nível insuficiente → `403`.
+
+**Fora do escopo desta atualização:** rotas `GET` de usuários, pedidos e
+relatórios continuam públicas (preservação de contrato); `POST /usuarios`
+segue aberto como cadastro público. Proteção de leitura e rate limiting ficam
+como trabalho futuro.
+
+**Validação:** `python tests/smoke_contract.py` → **68/68 checks**.

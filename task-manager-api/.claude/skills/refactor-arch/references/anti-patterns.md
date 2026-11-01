@@ -33,9 +33,9 @@ Cada anti-pattern tem: **ID**, **severidade**, **regra de detecção** (com o qu
 
 ### SEC-04 — Rota sem autenticação/autorização
 - **Severidade:** HIGH
-- **Detecção:** Rotas com verbos `POST`, `PUT`, `DELETE`, `PATCH` que não verificam token/session antes de operar em dados sensíveis. grep por `@app.route` / `router.post` sem `@login_required` / `@jwt_required` / middleware de auth correspondente.
-- **Por que:** Acesso não-autorizado a dados sensíveis ou operações destrutivas.
-- **Critério de correção:** Adicionar middleware/guard de auth em rotas sensíveis.
+- **Detecção:** Rotas com verbos `POST`, `PUT`, `DELETE`, `PATCH` que não verificam token/session antes de operar em dados sensíveis. grep por `@app.route` / `router.post` sem `@login_required` / `@jwt_required` / middleware de auth correspondente. Inclui rotas de **cadastro/criação** que aceitam identidade ou dono vindo do cliente (`usuario_id`, `owner_id`, `tenant_id`, `role`, `tipo`) sem validar o nível de autorização do usuário autenticado. Exemplos: `POST /produtos` sem exigir nível `admin`; `POST /pedidos` que aceita `usuario_id` de terceiros; `POST /usuarios` que permite definir `tipo: "admin"`. Procure por handlers de criação sem guard de auth/role e por campos de posse ou privilégio lidos do body.
+- **Por que:** Acesso não-autorizado a dados sensíveis ou operações destrutivas. Em rotas de cadastro, a falha permite que um usuário autenticado crie recursos em nome de outro (IDOR) ou obtenha privilégio indevido ao escolher o próprio nível/dono, mesmo que a rota exija um token válido.
+- **Critério de correção:** Adicionar middleware/guard de auth em rotas sensíveis e verificar o nível exigido para cada operação (ex.: cadastro de produto → `admin`; cadastro de pedido → `cliente`). Derivar o dono do recurso da identidade autenticada, não de `usuario_id`/`owner_id` enviado pelo cliente; se o campo for mantido no contrato, validar que corresponde ao usuário do token. Recusar nível insuficiente ou posse divergente com `403` e ausência/expiração de credencial com `401`. Aplicar o mesmo guard a rotas de atualização e exclusão do recurso.
 
 ### SEC-05 — XSS — output sem escaping
 - **Severidade:** HIGH

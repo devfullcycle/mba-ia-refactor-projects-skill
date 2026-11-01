@@ -13,6 +13,18 @@ Content-Type: application/json
   "card": "4111222233334444"
 }
 
+### Checkout - usuário existente exige a senha do titular (SEC-04)
+POST {{baseUrl}}/api/checkout
+Content-Type: application/json
+
+{
+  "usr": "Guilherme",
+  "eml": "gui@fullcycle.com.br",
+  "pwd": "senhaforte",
+  "c_id": 1,
+  "card": "4111222233334444"
+}
+
 ### Checkout - pagamento recusado
 POST {{baseUrl}}/api/checkout
 Content-Type: application/json

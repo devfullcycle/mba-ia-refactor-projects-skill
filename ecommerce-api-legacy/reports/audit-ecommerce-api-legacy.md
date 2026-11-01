@@ -1,7 +1,8 @@
 # Audit Report — ecommerce-api-legacy
 
 > Gerado pela skill `refactor-arch` (Fase 2 — Auditoria).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
+> Data: 2026-10-22 | Atualizado: 2026-10-31 (SEC-04 — regra expandida para rotas de cadastro/criação)
+> Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
 > Baseado na análise de: `reports/analysis-ecommerce-api-legacy.md`
 
 ## 1. Resumo
@@ -97,7 +98,7 @@ Nunca inserir senha em texto puro em seeds; usar usuário de teste com hash gera
 
 ### [HIGH] SEC-04 — Rota sem autenticação/autorização
 
-**Onde:** `src/AppManager.js:131` (DELETE), `src/AppManager.js:80` (GET administrativo)
+**Onde:** `src/AppManager.js:28-77` (POST /api/checkout), `src/AppManager.js:131` (DELETE), `src/AppManager.js:80` (GET administrativo)
 
 **Evidência:**
 ```javascript
@@ -111,14 +112,26 @@ app.delete('/api/users/:id', (req, res) => {
         res.send("Usuário deletado, mas as matrículas e pagamentos ficaram sujos no banco.");
     });
 });
+// src/AppManager.js:38-43,69-71 — identidade vem do body e não é provada
+this.db.get("SELECT id FROM users WHERE email = ?", [e], (err, user) => {
+    if (err) return res.status(500).send("Erro DB");
+    // ...
+    if (!user) {
+        // cria usuário com badCrypto(p || "123456")
+    } else {
+        processPaymentAndEnroll(user.id); // sem validar a senha do titular
+    }
+});
 ```
 
-**Impacto:** Qualquer cliente anônimo pode excluir usuários e obter o relatório financeiro completo, incluindo nome, e-mail e valores pagos de todos os estudantes. Não há token, sessão, role ou middleware de autorização em nenhuma rota. `POST /api/checkout` é público por natureza do fluxo, mas as rotas administrativas e destrutivas não podem ser.
+**Impacto:** Qualquer cliente anônimo pode excluir usuários e obter o relatório financeiro completo, incluindo nome, e-mail e valores pagos de todos os estudantes. Não há token, sessão, role ou middleware de autorização em nenhuma rota. Além disso, `POST /api/checkout` aceita o e-mail de uma conta existente e cria matrícula/pagamento em nome dela sem verificar a senha: conhecendo apenas o e-mail, um cliente compra em nome de terceiro (IDOR). A regra expandida de SEC-04 cobre exatamente rotas de cadastro/criação que aceitam identidade ou dono vindo do cliente sem validar a autorização do titular.
 
-**Recomendação:** Adicionar middleware de autenticação e guard de role `admin` nas rotas administrativas/destrutivas:
+**Recomendação:** Adicionar middleware de autenticação e guard de role `admin` nas rotas administrativas/destrutivas e derivar o dono do checkout da identidade autenticada, não do body:
 ```javascript
 app.delete('/api/users/:id', requireAuth, requireRole('admin'), userController.remove);
 app.get('/api/admin/financial-report', requireAuth, requireRole('admin'), reportController.financial);
+// checkout: novo usuário pode ser público; e-mail existente exige senha do titular
+// sem senha ou senha incorreta → 401; nunca aceitar usuario_id/owner_id/role do body
 ```
 Enquanto não houver autenticação, remover ou bloquear essas rotas.
 
@@ -497,7 +510,7 @@ Testar primeiro os contratos inventariados na Fase 1 antes de mover código.
 ## 4. Achados por categoria
 
 ### Segurança
-- **SEC-02, SEC-03, SEC-04, SEC-06** — credenciais e chave live hardcoded, hash de senha caseiro/reversível com senha seed em texto puro, rotas administrativa e destrutiva sem autenticação, e log do PAN completo do cartão + chave do gateway.
+- **SEC-02, SEC-03, SEC-04, SEC-06** — credenciais e chave live hardcoded, hash de senha caseiro/reversível com senha seed em texto puro, rotas administrativa e destrutiva sem autenticação, checkout que aceita o e-mail de terceiro sem prova de posse (IDOR), e log do PAN completo do cartão + chave do gateway.
 
 ### Arquitetura
 - **ARCH-01, ARCH-02** — checkout e relatório concentram regra de negócio e SQL dentro dos handlers; não há services nem repositories. A classe `AppManager` é o ponto único de schema, rota, negócio e persistência (embora com 141 LOC, abaixo do limiar de QUAL-01).
@@ -513,7 +526,7 @@ Testar primeiro os contratos inventariados na Fase 1 antes de mover código.
 1. **[CRITICAL]** Remover credenciais e chave live de `src/utils.js:2-5` e migrar para env vars — **rotacionar os segredos expostos**.
 2. **[CRITICAL]** Substituir `badCrypto` (`src/utils.js:17-23`) por `bcrypt`/`argon2`; remover senha em texto puro da seed (`src/AppManager.js:18`) e o default `"123456"` (`:68`).
 3. **[HIGH]** Remover o log de cartão/chave (`src/AppManager.js:45`).
-4. **[HIGH]** Proteger `DELETE /api/users/:id` e `GET /api/admin/financial-report` com autenticação/autorização (`src/AppManager.js:80,131`).
+4. **[HIGH]** Proteger `DELETE /api/users/:id` e `GET /api/admin/financial-report` com autenticação/autorização e exigir prova de posse no checkout de conta existente (`src/AppManager.js:28-77,80,131`).
 5. **[HIGH]** Extrair regra de negócio para services e SQL para repositories (`src/AppManager.js`), deixando handlers finos.
 6. **[MEDIUM]** Reescrever o relatório com JOIN/agregação (`src/AppManager.js:89-127`).
 7. **[MEDIUM]** Adicionar validação de schema no checkout e no `:id` (`src/AppManager.js:29-35,132`).

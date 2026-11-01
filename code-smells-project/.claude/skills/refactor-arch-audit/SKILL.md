@@ -39,6 +39,7 @@ Aplicar regras do `anti-patterns.md`:
 - **QUAL-06** Sem migrations
 - **QUAL-07** Config hardcoded
 - **QUAL-08** Sem testes
+- **DEP-01** Uso de APIs deprecated
 
 ## Passo 3 — Confirmar e classificar
 Para cada candidato:

@@ -82,6 +82,22 @@ test('POST /api/checkout rejeita payload malformado com 400', async () => {
     assert.equal(res.body, 'Bad Request');
 });
 
+test('POST /api/checkout para novo usuário sem pwd retorna 400', async () => {
+    const res = await request('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            usr: 'Sem Senha',
+            eml: 'sem-senha@teste.com',
+            c_id: 1,
+            card: '4111222233334444',
+        }),
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body, 'pwd é obrigatório para novo usuário');
+});
+
 test('POST /api/checkout recusa cartão que não inicia em 4', async () => {
     const res = await request('/api/checkout', {
         method: 'POST',
@@ -115,6 +131,39 @@ test('POST /api/checkout aprova cartão iniciado em 4 e cria matrícula', async 
     assert.equal(res.status, 200);
     assert.equal(res.body.msg, 'Sucesso');
     assert.ok(Number.isInteger(res.body.enrollment_id));
+});
+
+test('POST /api/checkout para usuário existente sem pwd retorna 401 (SEC-04)', async () => {
+    const res = await request('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            usr: 'Invasor',
+            eml: 'gui@fullcycle.com.br',
+            c_id: 2,
+            card: '4111222233334444',
+        }),
+    });
+
+    assert.equal(res.status, 401);
+    assert.equal(res.body, 'Credenciais inválidas');
+});
+
+test('POST /api/checkout para usuário existente com pwd incorreta retorna 401 (SEC-04)', async () => {
+    const res = await request('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            usr: 'Invasor',
+            eml: 'gui@fullcycle.com.br',
+            pwd: 'senha-errada',
+            c_id: 2,
+            card: '4111222233334444',
+        }),
+    });
+
+    assert.equal(res.status, 401);
+    assert.equal(res.body, 'Credenciais inválidas');
 });
 
 test('GET /api/admin/financial-report reflete novo checkout', async () => {
@@ -171,4 +220,22 @@ test('DELETE /api/users/:id rejeita id inválido com 400', async () => {
     const res = await request('/api/users/abc', { method: 'DELETE', headers: ADMIN_HEADERS });
     assert.equal(res.status, 400);
     assert.equal(res.body, 'Bad Request');
+});
+
+test('POST /api/checkout para usuário existente com pwd correta retorna 200 (SEC-04)', async () => {
+    const res = await request('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            usr: 'Guilherme',
+            eml: 'gui@fullcycle.com.br',
+            pwd: 'senhaforte',
+            c_id: 1,
+            card: '4111222233334444',
+        }),
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.msg, 'Sucesso');
+    assert.ok(Number.isInteger(res.body.enrollment_id));
 });

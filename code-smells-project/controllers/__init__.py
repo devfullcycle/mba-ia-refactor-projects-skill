@@ -5,10 +5,11 @@ negócio (resolve ARCH-01/ARCH-02). Erros de domínio sobem para o handler
 central de erros.
 """
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 
+from errors import NaoAutorizadoError, ProibidoError
 from schemas import validators
-from services import pedido_service, produto_service, usuario_service
+from services import auth_service, pedido_service, produto_service, usuario_service
 
 
 # ---------------------------------------------------------------- produtos ---
@@ -66,12 +67,25 @@ def criar_usuario():
 def login():
     dados = validators.login(request.get_json(silent=True))
     usuario = usuario_service.autenticar(dados["email"], dados["senha"])
-    return jsonify({"dados": usuario, "sucesso": True, "mensagem": "Login OK"}), 200
+    token = auth_service.emitir_token(usuario)
+    return jsonify({
+        "dados": usuario,
+        "token": token,
+        "sucesso": True,
+        "mensagem": "Login OK",
+    }), 200
 
 
 # ----------------------------------------------------------------- pedidos ---
 def criar_pedido():
     dados = validators.pedido(request.get_json(silent=True))
+
+    usuario = getattr(g, "usuario_atual", None)
+    if usuario is None:
+        raise NaoAutorizadoError("Token de acesso ausente")
+    if dados["usuario_id"] != usuario["id"]:
+        raise ProibidoError("Cliente só pode criar pedido para si mesmo")
+
     resultado = pedido_service.criar(dados["usuario_id"], dados["itens"])
     return jsonify({
         "dados": resultado,
