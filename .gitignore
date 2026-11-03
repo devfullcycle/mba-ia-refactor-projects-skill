@@ -10,3 +10,14 @@ venv/
 # SQLite
 *.db
 instance/
+
+# Python bytecode e caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambientes virtuais
+venv/
+env/
+.env
