@@ -1,4 +1,6 @@
 @baseUrl = http://localhost:3000
+# Deve ser igual ao ADMIN_TOKEN usado para subir a aplicação
+@adminToken = troque-este-token
 
 ### Checkout - sucesso
 POST {{baseUrl}}/api/checkout
@@ -26,6 +28,8 @@ Content-Type: application/json
 
 ### Relatório financeiro administrativo
 GET {{baseUrl}}/api/admin/financial-report
+X-Admin-Token: {{adminToken}}
 
-### Deletar usuário
+### Deletar usuário (remove também matrículas e pagamentos)
 DELETE {{baseUrl}}/api/users/1
+X-Admin-Token: {{adminToken}}
