@@ -122,6 +122,13 @@ Regras invioláveis:
 4. Encerre o servidor e remova artefatos gerados pela validação (ex.: `.db` de teste) se não existiam antes.
 5. Se algo falhar, corrija e valide novamente (até 3 iterações) antes de reportar.
 
+Armadilhas conhecidas (aprendidas nas execuções):
+- Em zsh, globs de `grep --include` precisam de aspas (`--include='*.py'`), senão o comando falha com "no matches found".
+- `grep "print("` também casa com `Blueprint(` — use `\bprint\(`. Trate hits de re-auditoria como candidatos e confirme lendo o código.
+- Python: rode a validação com `python -W error::DeprecationWarning` para provar que as APIs deprecated foram removidas.
+- Ao trocar `datetime.utcnow()`, mantenha datas *naive* se as colunas do banco forem naive (ver PB-17).
+- Para provar o contrato, compare também a **forma** do JSON (chaves e tipos) antes/depois, não só o status code.
+
 ### 3.4 Resumo final
 Imprima:
 

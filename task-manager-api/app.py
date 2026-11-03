@@ -1,34 +1,52 @@
+"""Entry point e composition root: cria a app, injeta dependências e registra rotas/middlewares."""
+import logging
+
 from flask import Flask
 from flask_cors import CORS
+
+from config.settings import Settings
+from controllers.category_controller import CategoryController
+from controllers.report_controller import ReportController
+from controllers.task_controller import TaskController
+from controllers.user_controller import UserController
 from database import db
-from routes.task_routes import task_bp
-from routes.user_routes import user_bp
-from routes.report_routes import report_bp
-import os, sys, json, datetime
+from middlewares.error_handler import register_error_handlers
+from routes.category_routes import create_category_routes
+from routes.report_routes import create_report_routes
+from routes.system_routes import create_system_routes
+from routes.task_routes import create_task_routes
+from routes.user_routes import create_user_routes
+from services.notification_service import NotificationService
+from services.token_service import TokenService
 
-app = Flask(__name__)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'super-secret-key-123'
+def create_app(settings=Settings):
+    logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-CORS(app)
-db.init_app(app)
+    app = Flask(__name__)
+    app.config.from_object(settings)
+    CORS(app, origins=settings.CORS_ORIGINS)
+    db.init_app(app)
 
-app.register_blueprint(task_bp)
-app.register_blueprint(user_bp)
-app.register_blueprint(report_bp)
+    notification_service = NotificationService(settings)
+    token_service = TokenService(settings.SECRET_KEY, settings.AUTH_TOKEN_MAX_AGE_SECONDS)
 
-@app.route('/health')
-def health():
-    return {'status': 'ok', 'timestamp': str(datetime.datetime.now())}
+    app.register_blueprint(create_system_routes(settings))
+    app.register_blueprint(create_task_routes(TaskController(db.session, notification_service)))
+    app.register_blueprint(create_user_routes(UserController(db.session, token_service)))
+    app.register_blueprint(create_report_routes(ReportController()))
+    app.register_blueprint(create_category_routes(CategoryController(db.session)))
+    register_error_handlers(app)
 
-@app.route('/')
-def index():
-    return {'message': 'Task Manager API', 'version': '1.0'}
+    with app.app_context():
+        import models  # noqa: F401 — registra os models no metadata antes do create_all
+        db.create_all()
 
-with app.app_context():
-    db.create_all()
+    return app
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+
+# Instância de módulo mantida para compatibilidade (`from app import app, db` no seed.py).
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(host=Settings.HOST, port=Settings.PORT, debug=Settings.DEBUG)

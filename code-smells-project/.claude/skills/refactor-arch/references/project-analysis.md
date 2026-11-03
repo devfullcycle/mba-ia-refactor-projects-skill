@@ -91,11 +91,11 @@ Perguntas para mapear:
 
 ```bash
 # Flask
-grep -rnE "@[a-z_]+\.route\(|add_url_rule\(" --include=*.py .
+grep -rnE "@[a-z_]+\.route\(|add_url_rule\(" --include='*.py' .
 # Express
-grep -rnE "(app|router)\.(get|post|put|patch|delete)\(" --include=*.js --include=*.ts . | grep -v node_modules
+grep -rnE "(app|router)\.(get|post|put|patch|delete)\(" --include='*.js' --include='*.ts' . | grep -v node_modules
 # FastAPI
-grep -rnE "@(app|router)\.(get|post|put|patch|delete)\(" --include=*.py .
+grep -rnE "@(app|router)\.(get|post|put|patch|delete)\(" --include='*.py' .
 ```
 
 Para Blueprints/Routers, combine o `url_prefix`/`app.use('/prefix', router)` com o path da rota.

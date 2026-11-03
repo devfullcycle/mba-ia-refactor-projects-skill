@@ -248,16 +248,16 @@ Use `grep -rnE "utcnow\(|\.query\.get\(|before_first_request|new Buffer\(|url\.p
 
 ```bash
 # segurança
-grep -rnE "execute\(.*(\+|%|\.format|f\")" --include=*.py .
-grep -rniE "(secret|passw|senha|api_?key|token|gateway).{0,15}[=:] *[\"']" --include=*.py --include=*.js . | grep -v node_modules
-grep -rnE "md5|sha1\(|badCrypto|base64" --include=*.py --include=*.js . | grep -v node_modules
-grep -rnE "debug *= *True|DEBUG\"\] *= *True" --include=*.py .
+grep -rnE "execute\(.*(\+|%|\.format|f\")" --include='*.py' .
+grep -rniE "(secret|passw|senha|api_?key|token|gateway).{0,15}[=:] *[\"']" --include='*.py' --include='*.js' . | grep -v node_modules
+grep -rnE "md5|sha1\(|badCrypto|base64" --include='*.py' --include='*.js' . | grep -v node_modules
+grep -rnE "debug *= *True|DEBUG\"\] *= *True" --include='*.py' .
 # arquitetura
-grep -rnE "^\s*global " --include=*.py .
-grep -rnE "^(let|var) [a-zA-Z]+ *= *(\{|\[|0)" --include=*.js src
+grep -rnE "^\s*global " --include='*.py' .
+grep -rnE "^(let|var) [a-zA-Z]+ *= *(\{|\[|0)" --include='*.js' src
 # performance
 grep -rnB3 "execute\(\|\.query\.\|db\.\(get\|all\|run\)(" . | grep -E "for |forEach"
 # qualidade
-grep -rnE "except:|except Exception" --include=*.py .
-grep -rnE "print\(|console\.log\(" --include=*.py --include=*.js . | grep -v node_modules
+grep -rnE "except:|except Exception" --include='*.py' .
+grep -rnE "\bprint\(|console\.log\(" --include='*.py' --include='*.js' . | grep -v node_modules
 ```
