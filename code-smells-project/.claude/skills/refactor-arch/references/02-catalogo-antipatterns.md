@@ -49,6 +49,7 @@ Cada entrada tem: **Sinal** (descrição abstrata, vale para qualquer linguagem)
 - **Sinal:** literal atribuído a nome que indica segredo (`secret`, `key`, `token`, `pass`, `pwd`, `credential`, `api_key`, `dsn`, `smtp`) ou literal com formato conhecido de chave (`pk_live_`, `sk_`, `AKIA…`, `ghp_`, `-----BEGIN … PRIVATE KEY-----`), em código versionado; senha de seed/admin em texto no fonte.
 - **Dicas:** `SECRET_KEY = "..."`, `app.config[...] = "..."`, objeto `config = { dbPass: "..." }`, `application.properties` com senha, `.env` versionado (verifique o `.gitignore`).
 - **NÃO é finding:** leitura de variável de ambiente, placeholder óbvio documentado (`changeme`, `<seu-valor>`) em arquivo `*.example`, chave pública que é pública por definição, valor de teste dentro de diretório de testes.
+- **Seed/demonstração:** senha de usuário de exemplo ou administrador de demonstração em texto no fonte **é finding** (HIGH se o usuário for administrador); correção P-01 (credenciais de seed), adaptando a fixture dos testes.
 - **Confirmar:** o valor é usado de fato (config, conexão, assinatura) ou é exemplo?
 - **Severidade:** CRITICAL (chave `live`/`prod` ou usada em runtime); HIGH se evidentemente só de desenvolvimento local.
 - **Correção:** P-01

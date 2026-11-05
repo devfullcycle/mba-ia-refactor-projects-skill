@@ -4,11 +4,11 @@ Define **como provar** que a aplicação continua funcionando e **como mostrar a
 
 ## 1. Princípios
 
-1. **Só recursos do projeto** (decisão D5): testes, scripts, targets, configs, CI e coleções/exemplos de requisição que **já existem**. Não crie testes, scripts, coleções ou helpers no projeto. Não adicione ferramenta de teste que o projeto não declare.
+1. **Só recursos do projeto** (decisão D5): testes, scripts, targets, configs, CI e coleções/exemplos de requisição que **já existem**. Não crie scripts, coleções ou helpers no projeto. Não adicione ferramenta de teste que o projeto não declare. **Única exceção:** na **Opção 2** de contrato (`07`, seção 4.1, P3) a skill adiciona/atualiza testes, no framework e no diretório de testes que o projeto já usa, **apenas para comprovar** as mudanças de contrato aprovadas (seção 8.9).
 2. **Comparar com o baseline**: tudo que for medido depois é comparado ao que foi medido **antes** de editar, com o mesmo comando.
 3. **Evidência real ou nada**: cada ✓ aponta um `E-nn` produzido por chamada de ferramenta desta sessão. Execução pulada = `NÃO EXECUTADO`. Nunca preencha resultado por inferência.
 4. **Compilar, subir, testar rodam sempre**, sem confirmação (classe B), em qualquer modo. Só instalação/ambiente (C) e destrutivos (D) dependem de aprovação.
-5. **Testes são imutáveis**: é proibido editar, remover ou marcar `skip` em teste existente para fazê-lo passar. Se uma mudança de contrato aprovada exigir ajuste de teste, pergunte (ver `07`, seção 4.3) e liste a alteração à parte.
+5. **Testes podem ser adaptados, nunca "para passar"**: a refatoração e os contratos aprovados exigem atualizar testes; o que é proibido é editar, remover, enfraquecer ou pular um teste só para ele passar. O teste alterado deve manter a intenção e continuar validando de forma equivalente ou mais forte. Política completa na seção 8.
 6. **Segredos mascarados** em toda evidência.
 
 ## 2. Plano de validação (montado na Fase 2, executado na Fase 3)
@@ -23,6 +23,8 @@ Tabela do relatório (seção "Plano de validação"), a partir do inventário d
 | V4 Sondagem ad hoc | depende de P4 | — | só se a rodada 1 permitir |
 | V5 Estático | sempre | compilar/importar (B) | — |
 | Pré-requisitos | | `<cmd instalação>` (C) | se ausentes |
+| Testes afetados previstos | | testes que dependem de módulos movidos, autenticação, seed ou campos alterados | classe T1/T2/T4 (seção 8) |
+| Prova prevista por `CT-xx` (Opção 2) | | teste novo / sondagem ad hoc / não comprovável | seção 8.9 |
 | Não exercitável | | rotas/fluxos e motivo | admin/destrutivas, banco externo, etc. |
 
 ## 3. Escada de validação
@@ -101,8 +103,12 @@ Saída (início e fim; segredos mascarados):
   <~15 últimas linhas>
 Bruto:        reports/evidence/project-{N}/{Run id}/E-02-<slug>.log
 Artefatos:    <junit.xml, cobertura, screenshots, vídeos, traces — somente os gerados pelo projeto/runner>
-Integridade:  testes alterados pela skill: <0 | lista>  (verificado por: <git diff --name-only nos caminhos de teste>)
+Integridade:  testes alterados/adicionados: <0 | n — ver "Alterações em testes" / "Testes adicionados">  (verificado por: <git diff, ou snapshots em tests-before/ se não versionados>)
 ```
+
+**E-00 — evidência da Fase 1.** Na Fase 2 (passo 9 do `SKILL.md`), junto do relatório, grave `reports/evidence/project-{N}/{Run id}/E-00-fase1-analise.txt` com: o bloco `PHASE 1: PROJECT ANALYSIS` **literal**; a lista dos arquivos-fonte contados (caminho e linhas) e o método de contagem; as rotas encontradas (método, caminho, arquivo:linha); o inventário de validação; os comandos descobertos (com classe). Segredos mascarados. O checklist da Fase 1 cita `E-00`. Não altera o formato do relatório.
+
+Artefatos adicionais, quando houver ajuste/criação de testes: `tests-before/<caminho>` (cópia do original), `E-nn-diff-testes.patch` (diff unificado) e as execuções vermelha/verde da seção 8.9.
 
 Para o usuário **ver e crer** que rodou:
 1. Comando literal, diretório, horários, duração, exit code.
@@ -113,13 +119,47 @@ Para o usuário **ver e crer** que rodou:
 6. **Anti-fabricação**: cada ✓ do bloco `Validation` e do checklist cita um `E-nn`; evidência só existe se saiu de uma chamada de ferramenta real; comando não executado aparece como `NÃO EXECUTADO (motivo)`.
 7. Ao final, imprima um resumo compacto (`Resumo da validação`) e o caminho da pasta de evidências.
 
-## 8. Verificação de integridade dos testes
+## 8. Política de alteração de testes
 
-Após a validação final: (a) `git diff --name-only` (classe A) restrito aos caminhos de teste; (b) comparar contagem de testes/skips com o baseline; (c) sem git, compare contra a cópia de checkpoint. Qualquer teste modificado sem aprovação ⇒ reverta a modificação e refaça a validação.
+**8.1 Princípio.** Testes podem e, muitas vezes, devem mudar numa refatoração. O que é proibido é alterá-los **só para passar**. Um teste alterado precisa continuar fazendo sentido e validando corretamente a mesma intenção.
+
+**8.2 Quando é permitido alterar:** (a) a refatoração moveu módulos, funções, imports ou fixtures que o teste usa; (b) uma mudança de contrato **aprovada** (`CT-xx`) alterou o comportamento que o teste afirma; (c) é necessária mudança de configuração/ambiente de teste (variável de ambiente, banco temporário, credencial de seed vinda do ambiente).
+
+**8.3 Classes**
+
+| Classe | O que é | Regra |
+|---|---|---|
+| **T1 mecânica** | imports, caminhos, fixture/setup, credencial de teste, autenticação necessária | asserções **idênticas** |
+| **T2 contrato** | a asserção muda porque o contrato aprovado mudou | a nova asserção expressa o novo contrato **de forma explícita** (ex.: com token ⇒ 200 e sem token ⇒ 401), preferindo manter a asserção original no cenário válido |
+| **T3 proibida** | remover ou comentar teste/asserção; `skip`/`xfail`/`skipif`; afrouxar o esperado (200 → "200 ou 500"); `assert True`; engolir exceção; mockar o objeto sob teste; reduzir os dados que exercitam a regra; mudar o esperado sem `CT-xx` correspondente | **nunca**, nem sob pedido |
+| **T4 novo** | teste adicionado para provar comportamento novo/alterado (**só Opção 2**) | seção 8.9 |
+
+**8.4 "Continua fazendo sentido" — verifique por teste alterado:** mesmo nome/cenário/intenção; nº de asserções ≥ o original; cada asserção original mantida ou substituída por equivalente/mais forte (justifique); o teste ainda **pode falhar** se o comportamento sob teste regredir (depende do código real, não de um valor copiado da nova saída sem análise); o esperado vem do contrato aprovado, não do que o código passou a retornar.
+
+**8.5 Procedimento**
+1. **Regressão primeiro:** se um teste falha após refatorar, investigue se é regressão (corrija o código) ou consequência de `CT-xx` aprovado. Só então adapte o teste.
+2. **Snapshot** do arquivo original em `reports/evidence/project-{N}/{Run id}/tests-before/<caminho>` **antes** de editar (permite diff mesmo sem git ou com testes não versionados).
+3. Edite o mínimo necessário.
+4. Gere o diff unificado e grave `E-nn-diff-testes.patch`.
+5. Reexecute o teste alterado **e** a suíte completa; compare com o baseline (nº de testes **não cai**; `skipped` **não sobe** sem explicação).
+6. Registre em "Alterações em testes" (`03`, seção 4).
+
+**8.6 Aprovação.** Ajustes T1/T2/T4 **rastreáveis** a `C-xx`/`CT-xx` já aprovados não geram pergunta extra (a aprovação do escopo/contrato os cobre; os previstos aparecem em "Testes afetados" na Fase 2). **Pergunte** (`Ajustar o teste` · `Manter e registrar a falha`) apenas se: (i) o ajuste não é rastreável a mudança aprovada; (ii) exigiria reescrever a maior parte das asserções do teste; (iii) o teste parece ter bug próprio. T3 nunca.
+
+**8.7 Integridade final.** A lista de testes alterados/adicionados deve ser **igual** à registrada (com git: `git diff` nos caminhos de teste; sem git ou não versionados: compare com `tests-before/`). Divergência ⇒ reverta o ajuste não registrado e refaça a validação.
+
+**8.8 Opção 1 (manter contrato).** Não há ajuste de contrato em testes; só T1 mecânico se a refatoração mover módulos/fixtures.
+
+**8.9 Comprovação das mudanças de contrato (Opção 2).** Cada `CT-xx` aplicado precisa de evidência produzida pela própria refatoração:
+1. **Teste novo ou atualizado** (T2/T4) no framework e no diretório de testes existentes, sem nova dependência, rastreado a `CT-xx`/`F-xxx`. Exemplos: sem credencial ⇒ 401; credencial inválida ⇒ 401; sem perfil ⇒ 403; credencial válida ⇒ comportamento esperado; rota removida ⇒ 404/405; campo ausente na resposta; entrada inválida ⇒ 400/404/409.
+2. **Execução verde** no código refatorado (`E-nn`).
+3. **Prova de sensibilidade quando viável:** executar o teste novo contra o **checkpoint do código original** (cópia fora do projeto ou worktree do checkpoint, classe B na cópia); ele deve **falhar** lá. Registre a execução vermelha (`E-nn`). Sem checkpoint utilizável, declare "sensibilidade não verificada".
+4. **Sem framework de testes:** comprove por sondagem ad hoc (exige P4 = Sim): chamada sem credencial ⇒ 401, com credencial ⇒ sucesso, etc., com `E-nn`. Sem ambos, o item fica `NÃO VALIDADO` (declarado, e avisado ao usuário antes de aplicar — `07`, seção 4.1).
+5. Preencha a tabela antes/depois com a coluna **"Prova"** (`E-nn`) e a seção "Testes adicionados" do anexo.
 
 ## 9. Casos especiais
 
-- **Sem nenhum teste/coleção:** V1–V3 indisponíveis ⇒ perguntar P4 (ad hoc) na rodada 1; sem permissão, validação em V5 com veredito `VALIDADO PARCIALMENTE (V5)` ou `NÃO VALIDADO`; reforce TST-01 como recomendação. **Não crie testes.**
+- **Sem nenhum teste/coleção:** V1–V3 indisponíveis ⇒ perguntar P4 (ad hoc) na rodada 1; sem permissão, validação em V5 com veredito `VALIDADO PARCIALMENTE (V5)` ou `NÃO VALIDADO`; reforce TST-01 como recomendação. Na Opção 1 **não crie testes**; na Opção 2 sem framework de testes, comprove por sondagem ad hoc (seção 8.9, item 4).
 - **Projeto não-HTTP** (CLI, biblioteca, worker): "boot" = executar o ponto de entrada com argumento de ajuda/versão ou o exemplo do README; "endpoints" = funções/comandos públicos exercitados por testes existentes. Marque o item do checklist "Endpoints originais respondem" como `N/A (não é serviço HTTP)` com motivo.
 - **Dependência externa** (banco/serviço que não é local): não conecte; valide estaticamente e por testes que usem mocks/containers locais já definidos no projeto; registre o limite.
 - **Dependências ausentes:** classe C; sem aprovação, a validação cai para V5 e isso é declarado.
@@ -131,7 +171,8 @@ Após a validação final: (a) `git diff --name-only` (classe A) restrito aos ca
 - [ ] Baseline registrado antes da primeira edição (E-01…).
 - [ ] Validação final com os **mesmos** comandos (E-nn…).
 - [ ] Tabela antes/depois de rotas e de testes.
-- [ ] Nenhum teste alterado (ou alteração aprovada e listada).
+- [ ] Testes alterados/adicionados somente os registrados (T1/T2/T4), com snapshot, diff, justificativa, reexecução e, na Opção 2, prova de sensibilidade (ou "não verificada" declarada).
+- [ ] `E-00` gravado na Fase 2 e citado no checklist da Fase 1.
 - [ ] Processos encerrados e portas liberadas.
 - [ ] Reauditoria executada; residuais listados.
 - [ ] Todos os ✓ do checklist e do bloco `Validation` referenciam `E-nn`.

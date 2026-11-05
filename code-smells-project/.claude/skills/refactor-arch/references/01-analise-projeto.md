@@ -110,7 +110,7 @@ Gere a árvore de diretórios do código-fonte (até 3 níveis, sem dependência
 
 ## 11. Saída
 
-Imprima o bloco `PHASE 1: PROJECT ANALYSIS` (`03-template-relatorio.md`, seção 2). Guarde em memória de trabalho, para a Fase 2: papéis por arquivo, rótulo de arquitetura, superfície de ataque, inventário de validação, comandos descobertos (com classe), snapshot ANTES. **Não pare para confirmação entre as Fases 1 e 2**: a única pausa obrigatória é no fim da Fase 2.
+Imprima o bloco `PHASE 1: PROJECT ANALYSIS` (`03-template-relatorio.md`, seção 2). Guarde em memória de trabalho, para a Fase 2: papéis por arquivo, rótulo de arquitetura, superfície de ataque, inventário de validação, comandos descobertos (com classe), snapshot ANTES. Guarde também o **texto literal** do bloco impresso e a lista de arquivos contados (caminho e linhas): na Fase 2 eles são gravados em `E-00-fase1-analise.txt` (`06`, seção 7). **Não pare para confirmação entre as Fases 1 e 2**: a única pausa obrigatória é no fim da Fase 2.
 
 ## 12. Casos de borda
 

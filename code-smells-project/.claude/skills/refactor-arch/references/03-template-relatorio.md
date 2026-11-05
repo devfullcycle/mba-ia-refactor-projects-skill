@@ -10,6 +10,7 @@ Use este arquivo na **Fase 2** (montar o relatório) e na **Fase 3** (anexar res
 - **Ordenação**: severidade (CRITICAL → HIGH → MEDIUM → LOW); dentro da severidade, categoria (Segurança, Arquitetura, Deprecated, Testes, Qualidade, Outro); depois arquivo (ordem alfabética) e linha. Os IDs `F-001…` são atribuídos **depois** de ordenar.
 - **Contagem**: `Summary` conta *findings* (um por anti-pattern com todas as suas ocorrências). O total de ocorrências aparece à parte.
 - **Run / Run id**: obtenha a data/hora do relógio do sistema (comando de leitura, classe A). Nunca invente. `Run` = ISO 8601 com offset (`2026-11-04T14:32:10-03:00`); `Run id` = `AAAAMMDD-HHMMSS` (`20261104-143210`).
+- **Legenda do checklist**: `[x]` critério **plenamente** atendido, com evidência; `[~]` **parcial** — obrigatório citar o finding residual (`F-xxx`); `[ ]` não atendido ou sem evidência (diga o motivo); `N/A` com motivo. Se existe finding residual ligado ao critério do item, o item **não** pode ser `[x]`.
 
 ## 2. Mensagem da Fase 1 (impressa no terminal; não vira arquivo)
 
@@ -46,7 +47,8 @@ Run:     <ISO 8601>          Run id: <AAAAMMDD-HHMMSS>
 Stack:   <linguagem> + <framework> <versão> (confiança: <alta|média|baixa>)
 Files:   <n> analyzed | ~<loc> lines of code
 Architecture: <rótulo>
-Skill:   refactor-arch 1.0 | Catalog 1.0
+Skill:   refactor-arch 1.1 | Catalog 1.0
+Evidence: reports/evidence/project-{N}/<Run id>/
 
 ## Summary
 CRITICAL: <n> | HIGH: <n> | MEDIUM: <n> | LOW: <n>
@@ -88,11 +90,21 @@ Recommendation: <o que fazer> (Playbook <P-xx>)
 - <ID> em <arquivo:linha> — descartado porque <motivo>
 (ou "Nenhum")
 
-## Mudanças de contrato propostas
-| ID | Rota/campo | Mudança | Motivo (Finding) | Alternativa compatível |
-|---|---|---|---|---|
-| CT-01 | <POST /admin/x> | <remover|proteger|omitir campo> | <F-001> | <proteger por flag/autenticação> |
+## Correções que exigem mudança de contrato
+(Cada correção do plano é classificada **compatível** — não altera o contrato — ou **exige contrato** — altera rota, status, formato ou acesso. Só as que exigem contrato entram aqui; a P3 da rodada de perguntas decide entre **Opção 1: manter o contrato** e **Opção 2: atualizar**, ver `07-politica-comandos-aprovacoes.md`.)
+
+| ID | Rota/campo | Mudança | Sev. | Motivo (Finding) | Impacto para clientes | Resolvido na Opção 1? | Prova prevista na Opção 2 |
+|---|---|---|---|---|---|---|---|
+| CT-01 | <POST /admin/x> | <remover|exigir autenticação|omitir campo> | <CRITICAL> | <F-001> | <o que o cliente precisa mudar ou deixa de receber> | <sim (valor neutralizado, chave mantida) \| parcial \| não (fica residual)> | <teste novo \| sondagem ad hoc \| não comprovável> |
 (ou "Nenhuma")
+
+Resumo para a pergunta: <n> correções exigem contrato; na Opção 1 ficam residuais <a> CRITICAL e <b> HIGH.
+
+## Testes afetados
+| Teste | Motivo (C-xx/CT-xx) | Classe (T1/T2/T4) | Ajuste previsto |
+|---|---|---|---|
+| <arquivo::teste> | <módulo movido \| autenticação \| seed \| campo alterado> | <T1> | <ex.: login do admin e cabeçalho Authorization> |
+(ou "Nenhum"; T4 = teste novo, só na Opção 2; ver `06-protocolo-validacao.md`, seção 8)
 
 ## Plano de mudanças
 | ID | Mudança | Sev. | Resolve | Arquivos | Padrão | Afeta contrato | Depende de |
@@ -140,7 +152,7 @@ Seções, nesta ordem:
 ## Decisões do usuário (registro)
 - Escopo: <todas | rejeitadas: C-xx, C-yy>
 - Modo de comandos: <Equilibrado|Completo|Passo a passo|Sem alterar ambiente>
-- Contrato: <aprovadas: CT-xx | nenhuma | revisão individual: CT-01 sim, CT-02 não>
+- Contrato: <Opção 1 — manter o contrato | Opção 2 — atualizar (CT-xx aplicados)>
 - Sondagem ad hoc: <somente leitura|incluindo escrita|não|não aplicável>
 
 ## Estrutura DEPOIS
@@ -164,14 +176,44 @@ Seções, nesta ordem:
 |---|---|---|
 | C-01 | aplicada / rejeitada pelo usuário / revertida / não aplicável | <detalhe> |
 
+## Contratos — resultado
+**Opção 1 (manter o contrato):** escreva "Contrato preservado: rotas, métodos, status e formato das respostas inalterados" e liste os **residuais por contrato**:
+
+| Finding | Severidade | O que ficou sem corrigir | O que exigiria (Opção 2) |
+|---|---|---|---|
+| <F-003> | <CRITICAL> | <rota administrativa sem autenticação> | <exigir credencial + testes que comprovem> |
+
+Ajustes de conteúdo sem mudança de formato (ex.: chave mantida com valor neutralizado) entram em "Mudanças aplicadas", com o motivo.
+
+**Opção 2 (atualizar):** uma linha por contrato aplicado.
+
+| CT | Rota/campo | Antes → Depois | Por que (F-xxx, CWE/OWASP) | Impacto e como adaptar o cliente | Prova (E-nn) |
+|---|---|---|---|---|---|
+| <CT-01> | <GET /relatorios/vendas> | <aberta → exige Bearer token admin> | <F-003, CWE-306/A01> | <enviar Authorization após POST /login> | <E-07 verde; E-08 vermelho no checkpoint> |
+
+**Texto-base para o README (seção Resultados):** 3–5 linhas prontas: quantas rotas/campos mudaram, o motivo de segurança, que a mudança foi aprovada pelo usuário na rodada de perguntas (Run id), onde está a justificativa e as provas.
+
+## Alterações em testes
+| Teste | Motivo | Classe | Antes/Depois (trecho do diff) | Asserções | Reexecução | Snapshot |
+|---|---|---|---|---|---|---|
+| <arquivo::teste> | <C-xx/CT-xx> | <T1/T2> | <diff curto> | <mantidas \| reforçadas> | <E-nn> | `tests-before/<caminho>` |
+(ou "Nenhuma")
+
+## Testes adicionados (Opção 2)
+| Teste | CT/F | O que comprova | Verde (código refatorado) | Vermelho (checkpoint original) |
+|---|---|---|---|---|
+| <arquivo::teste> | <CT-01> | <sem token ⇒ 401; com token ⇒ 200> | <E-nn> | <E-nn \| sensibilidade não verificada: motivo> |
+(ou "Não aplicável (Opção 1)")
+
 ## Evidências de execução
+(`E-00` — Fase 1 — foi gravado na Fase 2; ver `06-protocolo-validacao.md`, seção 7.)
 <um bloco E-nn por execução; formato em 06-protocolo-validacao.md, seção 7>
 
 ### Comparação antes/depois (rotas)
-| Método | Rota | ANTES | DEPOIS | Resultado |
-|---|---|---|---|---|
-| GET | /x | 200 {chaves} | 200 {chaves} | igual |
-| POST | /admin/x | 200 | removida (CT-01 aprovada) | ALTERADO (aprovado) |
+| Método | Rota | ANTES | DEPOIS | Resultado | Prova |
+|---|---|---|---|---|---|
+| GET | /x | 200 {chaves} | 200 {chaves} | igual | E-02, E-05 |
+| POST | /admin/x | 200 | removida (CT-01 aprovada) | ALTERADO (aprovado) | E-07 |
 (status possíveis: igual, ALTERADO (aprovado), DIVERGENTE, NÃO EXERCITADA (motivo))
 
 ### Resumo da validação
@@ -181,13 +223,13 @@ Seções, nesta ordem:
 Veredito: <VALIDADO (V1) | VALIDADO PARCIALMENTE (...) | NÃO VALIDADO (motivo)>
 
 ## Checklist de Validação
-(Cada item recebe [x] ou [ ] e uma referência. [x] exige evidência real E-nn ou arquivo:linha; sem evidência fica [ ] com o motivo.)
+(Cada item recebe [x], [~] ou [ ] e uma referência. [x] exige critério plenamente atendido e evidência real E-nn ou arquivo:linha; [~] parcial cita o finding residual F-xxx; sem evidência fica [ ] com o motivo. Itens da Fase 1 citam `E-00`.)
 
 ### Fase 1 — Análise
-- [ ] Linguagem detectada corretamente — <evidência>
-- [ ] Framework detectado corretamente — <evidência>
-- [ ] Domínio da aplicação descrito corretamente — <evidência>
-- [ ] Número de arquivos analisados condiz com a realidade — <evidência: contagem independente>
+- [ ] Linguagem detectada corretamente — <evidência> (E-00)
+- [ ] Framework detectado corretamente — <evidência> (E-00)
+- [ ] Domínio da aplicação descrito corretamente — <evidência> (E-00)
+- [ ] Número de arquivos analisados condiz com a realidade — <evidência: contagem independente> (E-00)
 
 ### Fase 2 — Auditoria
 - [ ] Relatório segue o template definido nos arquivos de referência — <evidência>
@@ -199,14 +241,14 @@ Veredito: <VALIDADO (V1) | VALIDADO PARCIALMENTE (...) | NÃO VALIDADO (motivo)>
 
 ### Fase 3 — Refatoração
 - [ ] Estrutura de diretórios segue padrão MVC — <evidência>
-- [ ] Configuração extraída para módulo de config (sem hardcoded) — <evidência>
+- [ ] Configuração extraída para módulo de config (sem hardcoded) — <evidência; se restar segredo/credencial no fonte, usar [~] e citar F-xxx>
 - [ ] Models criados para abstrair dados — <evidência>
 - [ ] Views/Routes separadas para visualização ou roteamento — <evidência>
 - [ ] Controllers concentram o fluxo da aplicação — <evidência>
 - [ ] Error handling centralizado — <evidência>
 - [ ] Entry point claro — <evidência>
 - [ ] Aplicação inicia sem erros — <E-nn>
-- [ ] Endpoints originais respondem corretamente — <E-nn; exceções aprovadas listadas>
+- [ ] Endpoints originais respondem corretamente — <X de Y rotas iguais; N alteradas por contrato aprovado (CT-xx) com prova E-nn; Opção 1 ⇒ N = 0>
 
 ## Itens residuais (reauditoria)
 <findings que continuam presentes, com o motivo (rejeitado pelo usuário, risco de contrato, fora de escopo) ou "Nenhum">
@@ -236,6 +278,9 @@ PHASE 3: REFACTORING COMPLETE
   <✓|✗|~> Existing tests pass (<passed>/<total>)      [E-nn]
   <✓|✗|~> No anti-patterns remaining                  [reauditoria: <n> residuais]
 
+Contract: <preservado (Opção 1) | n alterados e comprovados (Opção 2: E-nn…)>
+Tests:    adjusted <n> (T1 <a> / T2 <b>) · added <n> (T4) — ver "Alterações em testes"
+
 Veredito: <VALIDADO (V1) | VALIDADO PARCIALMENTE | NÃO VALIDADO>
 Relatório: <caminho> | Evidências: <pasta>
 ================================
@@ -255,7 +300,7 @@ Run:     2026-11-04T14:32:10-03:00          Run id: 20261104-143210
 Stack:   Ruby + Sinatra 4.0 (confiança: média)
 Files:   3 analyzed | ~210 lines of code
 Architecture: monolito-sem-camadas
-Skill:   refactor-arch 1.0 | Catalog 1.0
+Skill:   refactor-arch 1.1 | Catalog 1.0
 
 ## Summary
 CRITICAL: 1 | HIGH: 1 | MEDIUM: 1 | LOW: 1

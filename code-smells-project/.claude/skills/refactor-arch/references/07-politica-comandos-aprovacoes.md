@@ -38,6 +38,7 @@ Liste, com ID `K-nn`, classe e origem:
 - Instalação de dependências **ausentes** (C) e criação de ambiente virtual quando o projeto exigir (C).
 - Comandos de baseline e validação (B): testes, check/lint, compilação, boot, requisições existentes.
 - Comandos de limpeza/encerramento de processos iniciados pela skill.
+- Na Opção 2: execução dos testes novos/atualizados **contra a cópia do checkpoint** do código original (classe B, na cópia fora do projeto), para a prova de sensibilidade (`06`, seção 8.9).
 - Qualquer comando do projeto classificado D (com o motivo), para o usuário ver o que **não** será executado sem pergunta individual.
 Marque `não determinado` onde faltar informação, em vez de inventar.
 
@@ -73,10 +74,13 @@ Antes de perguntar, imprima o relatório e a linha literal `Phase 2 complete. Pr
 - `Passo a passo` — pergunta antes de cada comando de ambiente ou destrutivo
 - `Sem alterar ambiente` — não instala nem cria nada; valida só com o que já existe
 
-**P3 — "Aprovar as mudanças de contrato (remover/alterar rotas e campos)?"** — **só se** a tabela "Mudanças de contrato propostas" não estiver vazia.
-- `Aprovar todas`
-- `Revisar uma a uma`
-- `Nenhuma (manter contrato)` — aplique a alternativa compatível (proteger em vez de remover, omitir campo sensível) quando existir; senão, deixe o achado como residual
+**P3 — "Como tratar os endpoints cuja correção muda o contrato?"** — **só se** a tabela "Correções que exigem mudança de contrato" não estiver vazia. No texto da pergunta, informe quantas correções exigem contrato e quantos findings CRITICAL/HIGH **ficam residuais** se a Opção 1 for escolhida. Apenas **duas** opções:
+- `Manter o contrato como está (recomendado)` — **Opção 1:** não muda rotas, métodos, status, formato das respostas nem o que cada endpoint faz. Corrige por dentro o que for possível (SQL parametrizado, hash de senha, configuração, validação, transação, erros sem vazar detalhe, etc.) e, para dados sensíveis em respostas, mantém a chave e neutraliza o valor. O que só se corrige mudando o contrato (ex.: rota administrativa aberta, ausência de autenticação) fica **residual** no relatório
+- `Atualizar (permitir mudança de contrato)` — **Opção 2:** aplica as correções que exigem contrato (autenticação, remoção/proteção de rota, campo omitido) **e** adiciona/atualiza testes no framework existente que **comprovem** cada mudança, com evidências (ver `06-protocolo-validacao.md`, seção 8.9)
+
+Escolha mista (ex.: "atualizar só as rotas /admin") vem por "Outro": interprete, e se houver dúvida, repita a pergunta.
+
+**Pré-condição da Opção 2:** se não houver como comprovar (o projeto não tem framework de testes e a P4 foi "Não"), avise **antes de aplicar** e pergunte: `Prosseguir sem prova (itens ficam NÃO VALIDADO)` ou `Ficar na Opção 1`. Nunca aplique em silêncio uma mudança de contrato sem caminho de prova.
 
 **P4 — "Permitir sondagem ad hoc dos endpoints (curl criado pela skill)?"** — **só se** o inventário de validação não encontrou testes automatizados nem coleção/exemplos de requisição cobrindo as rotas. Se há cobertura, **não pergunte**: registre "não aplicável".
 - `Sim, somente leitura (recomendado)` — GET/HEAD em rotas não administrativas
@@ -88,7 +92,7 @@ Opção "Outro" do usuário: interprete o texto livre; se não der para mapear c
 ### 4.2 Rodada 2 (condicional)
 
 - P1 = "rejeitar itens" ⇒ pergunta multiselect "Quais grupos rejeitar?" com `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` (rejeita as mudanças `C-xx` cuja coluna "Sev." tem esse valor) e, em "Outro", IDs específicos (`C-04, C-07`). Se a rejeição quebrar uma dependência (`Depende de` no plano), avise e pergunte se rejeita também o dependente ou mantém a mudança.
-- P3 = "uma a uma" ⇒ até 4 contratos por chamada: `Aprovar` / `Rejeitar` para cada `CT-xx`.
+- Pré-condição da Opção 2 sem caminho de prova ⇒ a pergunta de seção 4.1 (`Prosseguir sem prova` · `Ficar na Opção 1`).
 
 ### 4.3 Perguntas durante a Fase 3
 
@@ -101,7 +105,7 @@ Opção "Outro" do usuário: interprete o texto livre; se não der para mapear c
   Opções: `Executar todos` · `Escolher quais` · `Pular (validação limitada)`.
   "Pular" não bloqueia a refatoração: a validação cai para um degrau inferior e isso é declarado. Exemplo: dependências ausentes ⇒ `pip install`/`npm install` são C; se pulados, a suíte não roda e o veredito é parcial/estático.
 - **Individual (classe D, ou C em "Passo a passo"):** mostre o comando literal, o que ele altera e por que é necessário. Opções: `Executar` · `Pular`. Para D, recomende `Pular` quando o comando puder apagar dados que você não criou.
-- **Teste que precisa mudar** por causa de uma mudança de contrato aprovada: pergunte antes de editar (`Editar o teste` · `Manter o teste e registrar a falha`) e liste a alteração à parte.
+- **Ajuste ou criação de teste:** segue `06-protocolo-validacao.md`, seção 8. Ajustes T1/T2 e testes novos T4 **rastreáveis a `C-xx`/`CT-xx` já aprovados não geram pergunta** (a aprovação do escopo/contrato os cobre). Pergunte (`Ajustar o teste` · `Manter e registrar a falha`) só se o ajuste não for rastreável a mudança aprovada, se exigir reescrever a maior parte das asserções do teste, ou se o teste parecer ter bug próprio. Alterar teste só para passar (T3) nunca é feito.
 
 ## 5. Sondagem ad hoc (curl criado pela skill)
 
@@ -113,7 +117,7 @@ Só ocorre quando a resposta de P4 permitir, e apenas como degrau V4 da escada (
 
 ## 6. Registro
 
-Toda decisão vai para "Decisões do usuário" (relatório e anexo), com o texto da opção escolhida. Todo comando executado ou pulado entra na evidência correspondente (`E-nn`) com a classe, a origem (`K-nn`) e a decisão que o autorizou (automático por classe B, lote aprovado, individual aprovado).
+Toda decisão vai para "Decisões do usuário" (relatório e anexo), com o texto da opção escolhida. Todo comando executado ou pulado entra na evidência correspondente (`E-nn`) com a classe, a origem (`K-nn`) e a decisão que o autorizou (automático por classe B, lote aprovado, individual aprovado). Registre também a **opção da P3** (Opção 1 ou 2) e cada ajuste ou criação de teste, com a classe (T1/T2/T4) e a aprovação de `C-xx`/`CT-xx` que o autorizou.
 
 ## 7. Checklist de autoverificação antes de rodar qualquer comando
 

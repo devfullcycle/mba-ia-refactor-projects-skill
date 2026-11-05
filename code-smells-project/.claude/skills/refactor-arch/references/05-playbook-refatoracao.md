@@ -8,9 +8,21 @@ Use na **Fase 3**, depois do baseline. Cada padrão `P-xx` resolve anti-patterns
 2. **Ordem canônica de aplicação** (cada passo seguido de verificação rápida de sintaxe/import — classe B):
    `P-01 config` → `P-18 dependências` (se aprovado) → `P-08 models/dados` (+ `P-02`, `P-17`, `P-10`) → `P-09 services` → `P-07 validação` → `P-04 serialização` → `P-05 auth/admin` → `P-06 erros` → `P-15 logs` → `P-12 async` / `P-11 N+1` → `P-13 DI/composition root` → `P-19 proteções HTTP` → `P-14 deprecated` → `P-16 limpeza`.
 3. Dependências entre padrões: P-09 exige P-08; P-13 vem depois de P-08/P-09; P-04 antes de P-05; P-06 antes de remover `str(e)` dos controllers.
-4. **Nunca** edite, remova ou marque como `skip` testes existentes para fazê-los passar.
+4. **Testes** seguem a política de `06-protocolo-validacao.md`, seção 8: adaptar com sentido (T1 mecânica, T2 contrato) é permitido; enfraquecer, remover ou pular teste para fazê-lo passar é **proibido** (T3); testes novos só na Opção 2 (T4).
 5. Um padrão por vez; se a validação rápida falhar, corrija ou reverta aquele padrão antes de seguir.
 6. Em todo padrão: depois de aplicar, **rebusque** o sinal do anti-pattern no código para confirmar que sumiu.
+7. **Opção de contrato (P3 da rodada de perguntas).** Aplique cada padrão conforme a opção escolhida pelo usuário:
+
+| Padrão | Opção 1 — manter o contrato | Opção 2 — atualizar |
+|---|---|---|
+| P-01, P-02, P-03, P-07, P-08 a P-10, P-12 a P-16, P-18 | aplica | aplica |
+| P-06 (erros) | aplica; mantém status e formato do corpo; só deixa de vazar detalhe interno (contrato de erro, listado) | aplica |
+| P-04 (campos sensíveis) | **mantém a chave e neutraliza o valor** (ex.: `"senha": null`) | omite o campo + teste de ausência |
+| P-05 (auth/admin) | **não aplica**: o finding fica **residual** com a recomendação "reexecutar com a Opção 2" | aplica + testes (sem credencial ⇒ 401/403; com credencial ⇒ sucesso) |
+| P-19 (CORS restritivo) | só rate limit e cabeçalhos aditivos; CORS padrão inalterado (residual) | restringe + prova |
+| P-11 (paginação), P-17 (tipo numérico) | só se retrocompatível (parâmetro opcional, mesmo formato numérico) | pode mudar contrato + prova |
+
+   Na Opção 2, **cada** mudança de contrato aplicada precisa de prova gerada pela refatoração (`06`, seção 8.9) e de justificativa no anexo (`03`, "Contratos — resultado"). Na Opção 1, nada muda no contrato: o que não puder ser corrigido sem mudá-lo vira residual declarado.
 
 ---
 
@@ -63,6 +75,34 @@ module.exports = {
 **Riscos:** o projeto passa a depender de variáveis; deixe o padrão de desenvolvimento funcionando para não quebrar o boot. **O segredo antigo continua no histórico do git — recomende rotacioná-lo** (registre no relatório, não execute nada).
 **Validar:** busca por literais de segredo/debug fixo não retorna nada; boot ok.
 
+### Credenciais de seed e dados de demonstração (SEC-02)
+Senha de usuário de exemplo/administrador gravada em texto no fonte do seed **é** finding. Não a mantenha só para os testes passarem: adapte a fixture do teste (T1, `06` seção 8).
+
+**Antes (Python)**
+```python
+db.execute("INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
+           ("Admin", "admin@exemplo.com", "admin123", "admin"))
+```
+**Depois**
+```python
+# config/settings.py
+SEED_ADMIN_PASSWORD = os.environ.get("SEED_ADMIN_PASSWORD")        # sem valor padrão no código
+
+# database/schema.py
+if Settings.SEED_ADMIN_PASSWORD:                                    # só em dev/teste, e só se definida
+    db.execute("INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
+               ("Admin", "admin@exemplo.com", hash_password(Settings.SEED_ADMIN_PASSWORD), "admin"))
+else:
+    logger.warning("seed de usuários ignorado: SEED_ADMIN_PASSWORD não definida")   # nunca imprimir segredo
+```
+```python
+# tests/conftest.py (ajuste T1: só o setup; asserções inalteradas)
+os.environ["SEED_ADMIN_PASSWORD"] = "senha-de-teste"
+```
+**Passos:** (1) mover o literal para variável de ambiente lida pela config; (2) gravar com hash (P-03); (3) seed de usuários só em dev/teste e só se a variável existir; (4) a fixture/setup dos testes define a variável; (5) documentar a variável no `.env.example`.
+**Contrato:** se o conjunto de usuários de seed observável por clientes mudar (ex.: listagem sem o admin de exemplo), registre em "Correções que exigem mudança de contrato"; na Opção 1, mantenha o mesmo conjunto de dados quando a variável estiver definida.
+**Validar:** busca por senha literal no seed = vazio; a suíte passa com a variável definida pela fixture.
+
 ## P-02 · Parametrizar consultas
 **Resolve:** SEC-01 · **Contrato:** não
 
@@ -100,7 +140,7 @@ def check_password(self, pwd): return check_password_hash(self.password, pwd)
 **Validar:** criar usuário e logar (testes existentes ou rota do projeto); registrar que usuários antigos migram no próximo login.
 
 ## P-04 · Serialização de saída sem campos sensíveis (DTO)
-**Resolve:** SEC-07 · **Contrato:** **[contrato]** (campos removidos; aprovar `CT-xx`; alternativa compatível não existe, pois o campo é o vazamento)
+**Resolve:** SEC-07 · **Contrato:** depende da opção (matriz da seção 0, regra 7): **Opção 1** neutraliza o valor e mantém a chave; **Opção 2** omite o campo **[contrato]**
 
 **Antes**
 ```python
@@ -115,10 +155,12 @@ def user_to_public(u): return {k: getattr(u, k) for k in PUBLIC_FIELDS}
 ```
 **Node:** `const toPublic = ({ id, name, email }) => ({ id, name, email });`
 **Passos:** (1) criar função/serializador de saída por entidade com **lista branca** de campos; (2) usar em todas as rotas que devolvem a entidade; (3) remover configuração interna do endpoint de saúde; (4) listar no relatório os campos removidos como mudança de contrato.
-**Validar:** comparar antes/depois: rota igual exceto campos removidos (`ALTERADO (aprovado)`).
+**Opção 1 (manter contrato):** o serializador devolve **as mesmas chaves**, com valor neutralizado nos campos sensíveis: `{"id": 1, "email": "a@b.c", "senha": None}`; em saúde/diagnóstico, `"secret_key": None`, `"db_path": None`, `"debug": False`. O formato não muda; o vazamento some. Registre o ajuste em "Mudanças aplicadas".
+**Opção 2 (atualizar):** omite o campo (lista branca acima) e **prova** com teste: `assert "senha" not in resposta.json()[0]` (T4), verde no código refatorado e vermelho no checkpoint (`06`, seção 8.9). Preencha a justificativa e a prova no anexo.
+**Validar:** Opção 1: rota igual (mesmas chaves) e nenhum valor sensível na resposta; Opção 2: rota igual exceto campos removidos (`ALTERADO (aprovado)`) com `E-nn`.
 
 ## P-05 · Autenticação/autorização e proteção de rotas administrativas
-**Resolve:** SEC-03, SEC-04, SEC-09, SEC-10, SEC-11 · **Contrato:** **[contrato]** (rotas passam a exigir credencial ou são removidas)
+**Resolve:** SEC-03, SEC-04, SEC-09, SEC-10, SEC-11 · **Contrato:** **[contrato]** — **só na Opção 2** (rotas passam a exigir credencial ou são removidas). Na Opção 1 este padrão **não é aplicado**: os findings ficam residuais com a recomendação "reexecutar com a Opção 2".
 
 **Variantes:**
 - **Remover** (padrão para execução de SQL/comando arbitrário vindo do cliente — SEC-04): apagar a rota e o handler. `CT-xx` obrigatório.
@@ -156,8 +198,19 @@ const requireRole = (...roles) => (req, res, next) => {
 router.delete("/api/users/:id", requireRole("admin"), usersController.remove);
 ```
 **Passos:** (1) se o projeto **não tem** mecanismo de identidade, introduza o mínimo compatível com a stack já usada (token assinado com chave da config, p. ex. JWT) **ou** proteja as rotas críticas por chave de administração vinda do ambiente e pergunte ao usuário qual caminho prefere (decisão de design, não presuma); (2) um único middleware/decorador; (3) aplicar nas rotas listadas como administrativas/destrutivas e em todas que expõem dados de usuários; (4) corrigir o login para emitir credencial verificável; (5) registrar mudanças de contrato (clientes passam a enviar credencial).
-**Riscos:** quebra clientes existentes — por isso é `CT-xx`. Se o usuário escolher "Nenhuma (manter contrato)", aplique só o que não muda o contrato (ex.: flag de ambiente que desabilita o destrutivo por padrão) e deixe o resto como residual.
-**Validar:** rota sem credencial ⇒ 401/403; com credencial ⇒ comportamento original; (só em V1/V3 já existentes; nada destrutivo em V4).
+**Riscos:** quebra clientes existentes — por isso é `CT-xx` e só se aplica com a Opção 2.
+**Provas exigidas (Opção 2, `06` seção 8.9)** — exemplo de testes no framework existente (T4/T2):
+```python
+def test_relatorio_exige_token(client):
+    assert client.get("/relatorios/vendas").status_code == 401            # sem credencial
+    assert client.get("/relatorios/vendas", headers={"Authorization": "Bearer invalido"}).status_code == 401
+
+def test_relatorio_com_token_admin(client, admin_token):
+    r = client.get("/relatorios/vendas", headers={"Authorization": f"Bearer {admin_token}"})
+    assert r.status_code == 200                                              # asserção original mantida
+```
+Cada teste: verde no código refatorado e, quando viável, **vermelho** no checkpoint do código original (prova de sensibilidade). Rota removida: `assert client.post("/admin/query", json={...}).status_code in (404, 405)`.
+**Validar:** rota sem credencial ⇒ 401/403; com credencial ⇒ comportamento original; evidências `E-nn` no anexo (nada destrutivo em sondagem ad hoc).
 
 ## P-06 · Tratamento de erros centralizado
 **Resolve:** SEC-13, ARC-09 · **Contrato:** pode alterar o corpo de erros 500 (formato/mensagem)
@@ -423,7 +476,7 @@ Remova do manifesto pacotes declarados e nunca importados (confirme por busca); 
 **Validar:** instalar (se permitido) e rodar a validação; sem imports quebrados.
 
 ## P-19 · Proteções HTTP básicas
-**Resolve:** SEC-17, SEC-09 (CORS) · **Contrato:** CORS mais restrito pode afetar clientes de outras origens
+**Resolve:** SEC-17, SEC-09 (CORS) · **Contrato:** cabeçalhos de segurança e rate limit são aditivos (Opção 1 e 2); **restringir o CORS padrão afeta clientes de outras origens** e só se aplica na Opção 2 (com prova)
 
 ```js
 app.use(helmet());
