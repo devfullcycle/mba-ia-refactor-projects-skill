@@ -1,0 +1,77 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.0, pytest-9.2.0, pluggy-1.7.0 -- D:\work\workspace-ia-python\mba-ia-refactor-projects-skill\code-smells-project\.venv\Scripts\python.exe
+rootdir: C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project
+configfile: pytest.ini
+collecting ... collected 12 items
+
+tests/test_contratos.py::test_ct01_admin_query_removida FAILED           [  8%]
+tests/test_contratos.py::test_ct03_relatorio_exige_admin FAILED          [ 16%]
+tests/test_contratos.py::test_ct04_login_emite_token FAILED              [ 25%]
+tests/test_contratos.py::test_ct04_rotas_de_dados_exigem_token FAILED    [ 33%]
+tests/test_contratos.py::test_ct04_cliente_sem_perfil_admin FAILED       [ 41%]
+tests/test_contratos.py::test_ct04_cliente_acessa_apenas_os_proprios_dados FAILED [ 50%]
+tests/test_contratos.py::test_ct04_rotas_publicas_continuam_abertas PASSED [ 58%]
+tests/test_contratos.py::test_ct05_usuarios_sem_senha FAILED             [ 66%]
+tests/test_contratos.py::test_ct06_health_sem_configuracao_interna FAILED [ 75%]
+tests/test_contratos.py::test_ct08_cors_nao_libera_origem_desconhecida FAILED [ 83%]
+tests/test_contratos.py::test_ct09_status_de_pedido_inexistente_404 FAILED [ 91%]
+tests/test_contratos.py::test_ct02_reset_db_exige_admin FAILED           [100%]
+
+================================== FAILURES ===================================
+E   AssertionError: assert 200 == 404
+     +  where 200 = <Response [200]>.status_code
+     +    where <Response [200]> = post('/admin/query', {'sql': 'SELECT 1'})
+     +      where post = <conftest.Cliente object at 0x000002691A899810>.post
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:40: AssertionError: assert 200 == 404
+E   AssertionError: assert 200 == 401
+     +  where 200 = <Response [200]>.status_code
+     +    where <Response [200]> = get('/relatorios/vendas')
+     +      where get = <conftest.Cliente object at 0x000002691A899810>.get
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:47: AssertionError: assert 200 == 401
+E   assert (False)
+     +  where False = isinstance(None, str)
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:60: assert (False)
+E   AssertionError: GET /usuarios
+    assert 200 == 401
+     +  where 200 = <Response [200]>.status_code
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:77: AssertionError: GET /usuarios
+E   AssertionError: assert 201 == 403
+     +  where 201 = <Response [201]>.status_code
+     +    where <Response [201]> = post('/produtos', {'nome': 'Cliente', 'preco': 1, 'estoque': 1})
+     +      where post = <conftest.Cliente object at 0x000002691A72FD90>.post
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:83: AssertionError: assert 201 == 403
+E   AssertionError: assert 200 == 403
+     +  where 200 = <Response [200]>.status_code
+     +    where <Response [200]> = get('/usuarios/6')
+     +      where get = <conftest.Cliente object at 0x000002691A8F5940>.get
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:94: AssertionError: assert 200 == 403
+E   assert False
+     +  where False = all(<generator object test_ct05_usuarios_sem_senha.<locals>.<genexpr> at 0x000002691A6E3AC0>)
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:118: assert False
+E   AssertionError: secret_key
+    assert 'secret_key' not in {'ambiente': 'producao', 'counts': {'pedidos': 0, 'produtos': 12, 'usuarios': 6}, 'database': 'connected', 'db_path': 'loja.db', ...}
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:125: AssertionError: secret_key
+E   AssertionError: assert 'Access-Control-Allow-Origin' not in {'Server': 'Werkzeug/3.1.9 Python/3.14.0', 'Date': 'Thu, 05 Nov 2026 21:17:18 GMT', 'Content-Type': 'application/json', 'Content-Length': '2846', 'Access-Control-Allow-Origin': 'http://origem-nao-permitida.example', 'Vary': 'Origin', 'Connection': 'close'}
+     +  where {'Server': 'Werkzeug/3.1.9 Python/3.14.0', 'Date': 'Thu, 05 Nov 2026 21:17:18 GMT', 'Content-Type': 'application/json', 'Content-Length': '2846', 'Access-Control-Allow-Origin': 'http://origem-nao-permitida.example', 'Vary': 'Origin', 'Connection': 'close'} = <Response [200]>.headers
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:133: AssertionError: assert 'Access-Control-Allow-Origin' not in {'Server': 'Werkzeug/3.1.9 Python/3.14.0', 'Date': 'Thu, 05 Nov 2026 21:17:18 GMT', 'Content-Type': 'application/json', 'Content-Length': '2846', 'Access-Control-Allow-Origin': 'http://origem-nao-permitida.example', 'Vary': 'Origin', 'Connection': 'close'}
+E   assert 200 == 404
+     +  where 200 = <Response [200]>.status_code
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:140: assert 200 == 404
+E   AssertionError: assert 200 == 401
+     +  where 200 = <Response [200]>.status_code
+     +    where <Response [200]> = post('/admin/reset-db')
+     +      where post = <conftest.Cliente object at 0x000002691A899810>.post
+C:\Users\maury\AppData\Local\Temp\claude\269c9d82cd8a9e13\74f9023c-e22a-405d-8784-c9bf4c7f79bf\scratchpad\checkpoint-original\code-smells-project\tests\test_contratos.py:148: AssertionError: assert 200 == 401
+=========================== short test summary info ===========================
+FAILED tests/test_contratos.py::test_ct01_admin_query_removida - AssertionErr...
+FAILED tests/test_contratos.py::test_ct03_relatorio_exige_admin - AssertionEr...
+FAILED tests/test_contratos.py::test_ct04_login_emite_token - assert (False)
+FAILED tests/test_contratos.py::test_ct04_rotas_de_dados_exigem_token - Asser...
+FAILED tests/test_contratos.py::test_ct04_cliente_sem_perfil_admin - Assertio...
+FAILED tests/test_contratos.py::test_ct04_cliente_acessa_apenas_os_proprios_dados
+FAILED tests/test_contratos.py::test_ct05_usuarios_sem_senha - assert False
+FAILED tests/test_contratos.py::test_ct06_health_sem_configuracao_interna - A...
+FAILED tests/test_contratos.py::test_ct08_cors_nao_libera_origem_desconhecida
+FAILED tests/test_contratos.py::test_ct09_status_de_pedido_inexistente_404 - ...
+FAILED tests/test_contratos.py::test_ct02_reset_db_exige_admin - AssertionErr...
+======================== 11 failed, 1 passed in 3.28s =========================

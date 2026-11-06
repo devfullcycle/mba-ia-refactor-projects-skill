@@ -1,0 +1,22 @@
+$ .venv/Scripts/python.exe -c "from app import app; ...url_map"
+GET /
+POST /admin/query
+POST /admin/reset-db
+GET /health
+POST /login
+GET /pedidos
+POST /pedidos
+PUT /pedidos/<int:pedido_id>/status
+GET /pedidos/usuario/<int:usuario_id>
+GET /produtos
+POST /produtos
+DELETE /produtos/<int:id>
+GET /produtos/<int:id>
+PUT /produtos/<int:id>
+GET /produtos/busca
+GET /relatorios/vendas
+GET /static/<path:filename>
+GET /usuarios
+POST /usuarios
+GET /usuarios/<int:id>
+exit=0 inicio=2026-11-05T18:06:42-0300 fim=2026-11-05T18:06:42-0300

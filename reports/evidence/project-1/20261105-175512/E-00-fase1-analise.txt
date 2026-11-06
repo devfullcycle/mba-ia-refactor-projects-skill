@@ -1,0 +1,70 @@
+E-00 · Evidência da Fase 1 (análise somente leitura)
+Run: 2026-11-05T17:55:12-03:00 · Run id: 20261105-175512
+Projeto: code-smells-project (Path: code-smells-project, raiz git: D:/work/workspace-ia-python/mba-ia-refactor-projects-skill)
+
+================================
+PHASE 1: PROJECT ANALYSIS
+================================
+Language:      Python 3.14.0 (runtime do .venv/pyvenv.cfg; versão não declarada em manifesto)
+Framework:     Flask 3.1.1 (confiança: alta)
+Dependencies:  flask==3.1.1, flask-cors==5.0.1, sqlite3 (stdlib); dev: pytest>=8.0, requests>=2.31
+Domain:        API REST de e-commerce (produtos, usuários/login, pedidos com itens e baixa de estoque, relatório de vendas)
+Architecture:  parcialmente-em-camadas — módulos controllers/models/database existem, mas app.py, controllers.py e models.py acumulam 3+ papéis; sem services, sem middleware
+Source files:  4 files analyzed (~780 lines)
+DB tables:     produtos, usuarios, pedidos, itens_pedido (SQLite local `loja.db`, sem FKs)
+Entry point:   app.py — `python app.py` (README.md:8; app.py:80-88), porta 5000
+Routes found:  19 (3 administrativas/destrutivas)
+Validation:    tests: unit=não integration=sim e2e=não | run-docs=sim | scripts=não | api-collection=não
+================================
+
+## Arquivos-fonte contados (método: `wc -l`, classe A; ignorados .git, .venv, __pycache__, .pytest_cache, .claude, *.db)
+app.py            88
+controllers.py   292
+database.py       86
+models.py        314
+TOTAL            780
+Testes (fora da contagem): tests/conftest.py 100; tests/test_api.py 247
+Outros: README.md, requirements.txt, requirements-dev.txt, pytest.ini, loja.db (ignorado pelo git; não lido)
+Diretórios não versionados sem código-fonte (apenas __pycache__ de execução anterior): config/, controllers/, database/, middlewares/, models/, routes/, services/
+
+## Papéis por arquivo
+app.py          entrypoint/composition root, config (7-9), rotas (11-32, 47, 59), controller+acesso a dados (47-78)
+controllers.py  controller, validação/regra de negócio (43-54, 242), notificações (208-210, 247-250), acesso a dados e config (264-290)
+models.py       acesso a dados, regra de negócio (137-146 total/estoque; 256-262 descontos), serialização row->dict
+database.py     conexão global, config (db_path), schema (DDL), seed com credenciais
+
+## Rotas (método, caminho, handler)
+GET    /                                app.py:33  index
+GET    /produtos                        controllers.py:5   listar_produtos      (registro app.py:11)
+GET    /produtos/busca                  controllers.py:111 buscar_produtos      (app.py:12)
+GET    /produtos/<int:id>               controllers.py:14  buscar_produto       (app.py:13)
+POST   /produtos                        controllers.py:24  criar_produto        (app.py:14)
+PUT    /produtos/<int:id>               controllers.py:64  atualizar_produto    (app.py:15)
+DELETE /produtos/<int:id>               controllers.py:98  deletar_produto      (app.py:16)
+GET    /usuarios                        controllers.py:128 listar_usuarios      (app.py:18)
+GET    /usuarios/<int:id>               controllers.py:136 buscar_usuario       (app.py:19)
+POST   /usuarios                        controllers.py:146 criar_usuario        (app.py:20)
+POST   /login                           controllers.py:167 login                (app.py:21)
+POST   /pedidos                         controllers.py:188 criar_pedido         (app.py:23)
+GET    /pedidos                         controllers.py:229 listar_todos_pedidos (app.py:24)
+GET    /pedidos/usuario/<int:usuario_id> controllers.py:222 listar_pedidos_usuario (app.py:25)
+PUT    /pedidos/<int:pedido_id>/status  controllers.py:237 atualizar_status_pedido (app.py:26)
+GET    /relatorios/vendas               controllers.py:257 relatorio_vendas     (app.py:28)  [administrativa: relatório financeiro]
+GET    /health                          controllers.py:264 health_check         (app.py:30)
+POST   /admin/reset-db                  app.py:48 reset_database                (app.py:47)  [administrativa/destrutiva]
+POST   /admin/query                     app.py:60 executar_query                (app.py:59)  [administrativa/destrutiva]
+Nenhuma rota verifica identidade/perfil.
+
+## Inventário de validação
+Testes: tests/ (pytest, pytest.ini:1-3), 23 testes de integração caixa-preta via HTTP: conftest.py copia o projeto para diretório temporário (sem *.db), sobe `python app.py` (conftest.py:79-83) na porta 5000 e aguarda /health (conftest.py:91). Cobrem as 16 rotas não administrativas + `/`.
+Instruções: README.md:5-12 (instalar e rodar); não documenta testes. Sem CI (.github ausente), sem Makefile/scripts, sem coleção de requisições, sem testes de UI.
+Ambiente: .venv com Python 3.14.0, flask 3.1.1, flask-cors 5.0.1, pytest 9.2.0, requests 2.34.2, werkzeug 3.1.9 (verificado por listagem de site-packages, classe A).
+
+## Comandos descobertos
+Instalar:  pip install -r requirements.txt (README.md:7) · pip install -r requirements-dev.txt (requirements-dev.txt) — C (não necessário: dependências presentes)
+Subir:     python app.py (README.md:8; app.py:80-88) — B (cria/semeia loja.db local apenas se vazio)
+Testar:    .venv/Scripts/python.exe -m pytest (pytest.ini) — B
+Checar:    .venv/Scripts/python.exe -m compileall -q <arquivos> — B
+Porta/URL: 5000, http://localhost:5000 (app.py:88; README.md:11) · Saúde: GET /health (controllers.py:264)
+Destrutivo do projeto: POST /admin/reset-db (app.py:47) — D
+SO/shell: Windows 11 (win32); Git Bash e PowerShell disponíveis.

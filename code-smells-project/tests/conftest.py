@@ -19,6 +19,9 @@ import requests
 DIR_PROJETO = Path(__file__).resolve().parent.parent
 PORTA = 5000
 URL_BASE = f"http://127.0.0.1:{PORTA}"
+# Credenciais de seed apenas para o ambiente de teste (a aplicação as lê do ambiente).
+SENHA_ADMIN_TESTE = "admin123"
+SENHA_CLIENTE_TESTE = "cliente123"
 IGNORAR = shutil.ignore_patterns(
     "tests", ".venv", "venv", "__pycache__", "*.pyc", "*.db",
     "instance", ".pytest_cache", "node_modules",
@@ -44,10 +47,13 @@ def _encerrar(proc):
 
 
 class Cliente:
-    def __init__(self, base):
+    def __init__(self, base, token=None):
         self.base = base
+        self.token = token
 
     def _req(self, metodo, caminho, **kw):
+        if self.token:
+            kw["headers"] = {"Authorization": f"Bearer {self.token}", **kw.get("headers", {})}
         return requests.request(metodo, self.base + caminho, timeout=10, **kw)
 
     def get(self, caminho, **kw):
@@ -64,7 +70,7 @@ class Cliente:
 
 
 @pytest.fixture(scope="session")
-def api(tmp_path_factory):
+def servidor(tmp_path_factory):
     if _porta_em_uso(PORTA):
         pytest.exit(f"Porta {PORTA} já está em uso; encerre o processo e rode novamente.",
                     returncode=2)
@@ -75,7 +81,8 @@ def api(tmp_path_factory):
 
     caminho_log = raiz / "servidor.log"
     log = caminho_log.open("w", encoding="utf-8")
-    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8",
+           "SEED_ADMIN_PASSWORD": SENHA_ADMIN_TESTE, "SEED_CLIENTE_PASSWORD": SENHA_CLIENTE_TESTE}
     proc = subprocess.Popen(
         [sys.executable, "app.py"], cwd=destino, env=env,
         stdout=log, stderr=subprocess.STDOUT,
@@ -94,7 +101,24 @@ def api(tmp_path_factory):
                 time.sleep(0.3)
         else:
             pytest.exit("Timeout aguardando a aplicação subir em /health.", returncode=2)
-        yield Cliente(URL_BASE)
+        yield URL_BASE
     finally:
         _encerrar(proc)
         log.close()
+
+
+def _token(base, email, senha):
+    r = requests.post(base + "/login", json={"email": email, "senha": senha}, timeout=10)
+    return r.json().get("dados", {}).get("token") if r.status_code == 200 else None
+
+
+@pytest.fixture(scope="session")
+def api(servidor):
+    """Cliente autenticado como administrador (rotas protegidas exigem token)."""
+    return Cliente(servidor, _token(servidor, "admin@loja.com", SENHA_ADMIN_TESTE))
+
+
+@pytest.fixture(scope="session")
+def api_anonimo(servidor):
+    """Cliente sem credencial."""
+    return Cliente(servidor)

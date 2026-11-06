@@ -1,0 +1,24 @@
+inicio=2026-11-05T18:17:00-0300
+compileall exit=0
+2026-11-05 18:17:01,371 WARNING app: SECRET_KEY não definida: usando chave aleatória temporária (tokens expiram ao reiniciar)
+GET /
+POST /admin/reset-db
+GET /health
+POST /login
+GET /pedidos
+POST /pedidos
+PUT /pedidos/<int:pedido_id>/status
+GET /pedidos/usuario/<int:usuario_id>
+GET /produtos
+POST /produtos
+DELETE /produtos/<int:produto_id>
+GET /produtos/<int:produto_id>
+PUT /produtos/<int:produto_id>
+GET /produtos/busca
+GET /relatorios/vendas
+GET /static/<path:filename>
+GET /usuarios
+POST /usuarios
+GET /usuarios/<int:usuario_id>
+rotas exit=0
+fim=2026-11-05T18:17:01-0300

@@ -1,0 +1,44 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.0, pytest-9.2.0, pluggy-1.7.0 -- D:\work\workspace-ia-python\mba-ia-refactor-projects-skill\code-smells-project\.venv\Scripts\python.exe
+rootdir: D:\work\workspace-ia-python\mba-ia-refactor-projects-skill\code-smells-project
+configfile: pytest.ini
+testpaths: tests
+collecting ... collected 35 items
+
+tests/test_api.py::test_raiz PASSED                                      [  2%]
+tests/test_api.py::test_health PASSED                                    [  5%]
+tests/test_api.py::test_listar_produtos_seed PASSED                      [  8%]
+tests/test_api.py::test_buscar_produto_por_id PASSED                     [ 11%]
+tests/test_api.py::test_buscar_produto_inexistente PASSED                [ 14%]
+tests/test_api.py::test_busca_produtos_por_termo PASSED                  [ 17%]
+tests/test_api.py::test_busca_produtos_por_categoria_e_preco PASSED      [ 20%]
+tests/test_api.py::test_crud_produto PASSED                              [ 22%]
+tests/test_api.py::test_atualizar_e_deletar_produto_inexistente PASSED   [ 25%]
+tests/test_api.py::test_criar_produto_validacoes PASSED                  [ 28%]
+tests/test_api.py::test_listar_usuarios_seed PASSED                      [ 31%]
+tests/test_api.py::test_buscar_usuario PASSED                            [ 34%]
+tests/test_api.py::test_criar_usuario PASSED                             [ 37%]
+tests/test_api.py::test_criar_usuario_campos_obrigatorios PASSED         [ 40%]
+tests/test_api.py::test_login_sucesso PASSED                             [ 42%]
+tests/test_api.py::test_login_credenciais_invalidas PASSED               [ 45%]
+tests/test_api.py::test_login_campos_obrigatorios PASSED                 [ 48%]
+tests/test_api.py::test_criar_pedido_calcula_total_e_baixa_estoque PASSED [ 51%]
+tests/test_api.py::test_criar_pedido_estoque_insuficiente PASSED         [ 54%]
+tests/test_api.py::test_criar_pedido_produto_inexistente PASSED          [ 57%]
+tests/test_api.py::test_criar_pedido_validacoes PASSED                   [ 60%]
+tests/test_api.py::test_atualizar_status_pedido PASSED                   [ 62%]
+tests/test_api.py::test_relatorio_vendas PASSED                          [ 65%]
+tests/test_contratos.py::test_ct01_admin_query_removida PASSED           [ 68%]
+tests/test_contratos.py::test_ct03_relatorio_exige_admin PASSED          [ 71%]
+tests/test_contratos.py::test_ct04_login_emite_token PASSED              [ 74%]
+tests/test_contratos.py::test_ct04_rotas_de_dados_exigem_token PASSED    [ 77%]
+tests/test_contratos.py::test_ct04_cliente_sem_perfil_admin PASSED       [ 80%]
+tests/test_contratos.py::test_ct04_cliente_acessa_apenas_os_proprios_dados PASSED [ 82%]
+tests/test_contratos.py::test_ct04_rotas_publicas_continuam_abertas PASSED [ 85%]
+tests/test_contratos.py::test_ct05_usuarios_sem_senha PASSED             [ 88%]
+tests/test_contratos.py::test_ct06_health_sem_configuracao_interna PASSED [ 91%]
+tests/test_contratos.py::test_ct08_cors_nao_libera_origem_desconhecida PASSED [ 94%]
+tests/test_contratos.py::test_ct09_status_de_pedido_inexistente_404 PASSED [ 97%]
+tests/test_contratos.py::test_ct02_reset_db_exige_admin PASSED           [100%]
+
+============================= 35 passed in 6.04s ==============================

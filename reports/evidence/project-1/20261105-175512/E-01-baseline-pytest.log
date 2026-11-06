@@ -1,0 +1,32 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.0, pytest-9.2.0, pluggy-1.7.0 -- D:\work\workspace-ia-python\mba-ia-refactor-projects-skill\code-smells-project\.venv\Scripts\python.exe
+rootdir: D:\work\workspace-ia-python\mba-ia-refactor-projects-skill\code-smells-project
+configfile: pytest.ini
+testpaths: tests
+collecting ... collected 23 items
+
+tests/test_api.py::test_raiz PASSED                                      [  4%]
+tests/test_api.py::test_health PASSED                                    [  8%]
+tests/test_api.py::test_listar_produtos_seed PASSED                      [ 13%]
+tests/test_api.py::test_buscar_produto_por_id PASSED                     [ 17%]
+tests/test_api.py::test_buscar_produto_inexistente PASSED                [ 21%]
+tests/test_api.py::test_busca_produtos_por_termo PASSED                  [ 26%]
+tests/test_api.py::test_busca_produtos_por_categoria_e_preco PASSED      [ 30%]
+tests/test_api.py::test_crud_produto PASSED                              [ 34%]
+tests/test_api.py::test_atualizar_e_deletar_produto_inexistente PASSED   [ 39%]
+tests/test_api.py::test_criar_produto_validacoes PASSED                  [ 43%]
+tests/test_api.py::test_listar_usuarios_seed PASSED                      [ 47%]
+tests/test_api.py::test_buscar_usuario PASSED                            [ 52%]
+tests/test_api.py::test_criar_usuario PASSED                             [ 56%]
+tests/test_api.py::test_criar_usuario_campos_obrigatorios PASSED         [ 60%]
+tests/test_api.py::test_login_sucesso PASSED                             [ 65%]
+tests/test_api.py::test_login_credenciais_invalidas PASSED               [ 69%]
+tests/test_api.py::test_login_campos_obrigatorios PASSED                 [ 73%]
+tests/test_api.py::test_criar_pedido_calcula_total_e_baixa_estoque PASSED [ 78%]
+tests/test_api.py::test_criar_pedido_estoque_insuficiente PASSED         [ 82%]
+tests/test_api.py::test_criar_pedido_produto_inexistente PASSED          [ 86%]
+tests/test_api.py::test_criar_pedido_validacoes PASSED                   [ 91%]
+tests/test_api.py::test_atualizar_status_pedido PASSED                   [ 95%]
+tests/test_api.py::test_relatorio_vendas PASSED                          [100%]
+
+============================= 23 passed in 3.90s ==============================
