@@ -76,6 +76,8 @@ Tradução dos conceitos para as stacks mais comuns. Se a stack do projeto não 
 - **R8 — Queries parametrizadas.** Toda query usa o placeholder da stack (`?`, `%s`, `$1`, `:nome`, `@nome` — ver tabela no `refactor-playbook.md`). Nunca interpolação de string em SQL (resolve SEC-01).
 - **R9 — Segredos fora do código.** Credenciais, chaves e tokens vêm de ambiente ou gerenciador de segredos, nunca literais (resolve SEC-02).
 - **R10 — Erro centralizado.** Use o mecanismo de error handler do framework (seção 3) em vez de blocos de captura genérica repetidos em cada handler (resolve QUAL-03).
+- **R11 — Segurança por padrão.** Auth e autorização existem no default do projeto; nenhuma correção pode depender de flag opcional (`AUTH_REQUIRED=true`). Se o contrato mudar, atualize os testes em vez de manter o achado aberto.
+- **R12 — Autorização por papel e posse.** Gestão de usuários exige `admin`; rotas de domínio exigem o papel adequado. Identidade, papel e dono do recurso são derivados do token — nunca de `role`, `tipo`, `usuario_id` ou `owner_id` enviados pelo cliente.
 
 ## 5. Ordem de execução
 
@@ -85,7 +87,7 @@ Tradução dos conceitos para as stacks mais comuns. Se a stack do projeto não 
 4. **Services** — extrair regras de negócio dos controllers para services por domínio.
 5. **Controllers** — reduzir handlers a orquestração pura (request → service → response).
 6. **Routes** — separar o registro de rotas do entrypoint, agrupando por recurso.
-7. **Middleware** — adicionar guards de auth nas rotas sinalizadas pela auditoria (SEC-04).
+7. **Middleware/Auth** — aplicar autenticação e autorização **default deny** (Padrão 9 do playbook) em rotas de escrita e administrativas; sem flag opt-in (SEC-04).
 8. **Cleanup** — remover arquivos antigos, dead code e imports mortos.
 9. **Validação** — executar o checklist da seção 6.
 
@@ -99,6 +101,11 @@ O checklist é **derivado do inventário de rotas da Fase 1** — não existe li
 - [ ] Nenhuma query interpolada restante — grep por concatenação/interpolação em chamadas SQL
 - [ ] Nenhum segredo literal no código — grep pelos padrões de SEC-02
 - [ ] Responses não expõem campos sensíveis (senhas, tokens, chaves internas)
+- [ ] Rotas de escrita rejeitam anônimo por padrão (`401`)
+- [ ] Rotas administrativas rejeitam não-admin (`403`)
+- [ ] Identidade, papel e posse vêm do token, nunca do body
+- [ ] Nenhuma senha em texto puro em seed/banco (hash com salt em todo armazenamento)
+- [ ] Nenhum CRITICAL/HIGH em `PARCIAL` ou `NÃO RESOLVIDO`
 - [ ] Nenhum bloco de captura genérica que engole erro sem log (QUAL-03)
 - [ ] Arquivos antigos removidos; nenhum import/dependência morta restante
 - [ ] `git status` limpo de sobras da refatoração (arquivos órfãos, diretórios vazios)

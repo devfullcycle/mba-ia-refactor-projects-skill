@@ -47,7 +47,7 @@ Todas as variáveis estão documentadas em `.env.example`. Principais:
 | `DATABASE_URL` | `sqlite:///<projeto>/tasks.db` | Conexão do banco |
 | `HOST` / `PORT` | `127.0.0.1` / `5000` | Bind do servidor |
 | `FLASK_DEBUG` | `false` | Debug da aplicação |
-| `AUTH_REQUIRED` | `false` | Exige Bearer JWT em rotas de escrita |
+| `AUTH_REQUIRED` | `true` | Auth default deny: exige Bearer JWT em rotas de escrita |
 | `JWT_EXPIRATION_SECONDS` | `86400` | Validade do token |
 
 ## Autenticação
@@ -65,7 +65,16 @@ curl -X POST localhost:5000/tasks \
   -d '{"title":"Nova task"}'
 ```
 
-Com `AUTH_REQUIRED=true`, todas as rotas `POST`/`PUT`/`DELETE` (exceto `/login`) exigem o header. O default `false` preserva o contrato original dos endpoints do projeto legado.
+A autenticação é **default deny** e fail-closed: todas as rotas `POST`/`PUT`/`DELETE` (exceto `/login`) exigem o header, sem depender de flag opt-in. `AUTH_REQUIRED=true` é o default e reflete esse comportamento. Identidade, papel e posse são derivados do JWT; `user_id`/`role` enviados no body não são confiados.
+
+A **gestão de usuários** exige papel `admin`:
+
+- `GET /users` (listagem administrativa)
+- `POST /users`
+- `PUT /users/<id>`
+- `DELETE /users/<id>`
+
+Requisições sem token retornam `401`; tokens de usuários comuns recebem `403`. Usuários não-admin só podem criar, atualizar e remover tarefas das quais são donos; `admin` pode operar sobre qualquer tarefa.
 
 ## Testes
 
@@ -73,7 +82,7 @@ Com `AUTH_REQUIRED=true`, todas as rotas `POST`/`PUT`/`DELETE` (exceto `/login`)
 pytest
 ```
 
-8 testes de integração cobrem todos os recursos, contratos de resposta, validação (400), auth (401/201) e migração de hash MD5 legado.
+8 testes de integração cobrem todos os recursos, contratos de resposta, validação (400), auth (401/403/201/200), posse de tarefas e migração de hash MD5 legado. A suíte usa `TestConfig` com `AUTH_REQUIRED=True`, sem mascarar o comportamento do default de produção.
 
 ## Endpoints
 
@@ -85,8 +94,8 @@ pytest
 | GET/PUT/DELETE | `/tasks/<id>` | Detalha/atualiza/remove tarefa |
 | GET | `/tasks/search` | Busca por `q`, `status`, `priority`, `user_id` |
 | GET | `/tasks/stats` | Estatísticas agregadas |
-| GET/POST | `/users` | Lista/cria usuários |
-| GET/PUT/DELETE | `/users/<id>` | Detalha/atualiza/remove usuário |
+| GET/POST | `/users` | Lista (admin) / cria (admin) usuários |
+| GET/PUT/DELETE | `/users/<id>` | Detalha (público) / atualiza (admin) / remove (admin) usuário |
 | GET | `/users/<id>/tasks` | Tarefas do usuário |
 | POST | `/login` | Autenticação (JWT) |
 | GET | `/reports/summary` | Relatório geral |
@@ -96,6 +105,8 @@ pytest
 
 ## Mudanças de contrato em relação ao projeto original
 
+- Todas as rotas de escrita exigem JWT por padrão (`401` sem token). A gestão de usuários exige `admin` (`403` para os demais).
+- Tarefas de não-admin são sempre criadas/atualizadas com o dono derivado do token; criar ou transferir para terceiro retorna `403`.
 - `password` (hash) deixou de ser retornado por `/users` e `/login` (correção de segurança).
 - `/login` passou a emitir JWT real em vez de `fake-jwt-token-<id>`.
 - O banco SQLite passa a ficar na raiz do projeto (`tasks.db`) em vez de `instance/`.

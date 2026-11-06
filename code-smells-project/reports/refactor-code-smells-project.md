@@ -1,9 +1,10 @@
 # Refactor Report — code-smells-project
 
 > Gerado pela skill `refactor-arch` (Fase 3 — Refatoração).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project`
+> Data: 2026-11-05 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project`
 > Baseado em: `reports/analysis-code-smells-project.md` e `reports/audit-code-smells-project.md`
 > Confirmação do usuário: **Fase 3 aprovada com smoke test antes** e **remoção de `POST /admin/query`**.
+> Reexecução da Etapa 6: fecha o resíduo de SEC-03 (seed em texto puro e fallback de comparação em claro) apontado no feedback.
 
 ## 1. Resumo
 
@@ -45,7 +46,7 @@ code-smells-project/
 ├── models/produto.py         invariantes de entidade (Produto, ItemPedido)
 ├── database/                 connection.py (por request) + schema.py (DDL/seed)
 ├── middleware/               error_handler.py (erro central) + auth.py (admin)
-├── tests/smoke_contract.py   smoke test de contrato (68 checks)
+├── tests/smoke_contract.py   smoke de contrato + segurança (73 checks)
 ├── .env.example
 └── reports/
 ```
@@ -57,7 +58,7 @@ code-smells-project/
 | Maior arquivo (LOC) | 314 (`models.py`) | 139 (`pedido_repository.py`) |
 | Camadas | 0 (flat) | 8 (routes, controllers, schemas, services, repositories, models, database, middleware) |
 | Queries parametrizadas | não | sim (100%) |
-| Testes | 0 | 68 checks (smoke de contrato) |
+| Testes | 0 | 73 checks (smoke de contrato + segurança) |
 
 O aumento de LOC reflete a separação de responsabilidades (um arquivo por
 recurso/camada) e a extração de validação, erros e config — não crescimento
@@ -69,7 +70,7 @@ de complexidade em um único ponto.
 |---|---|---|---|
 | **SEC-01** SQL Injection | CRITICAL | Todas as queries passaram a usar placeholders `?`; o endpoint `/admin/query` foi removido | `repositories/produto_repository.py`, `usuario_repository.py`, `pedido_repository.py`; remoção em `routes/relatorio_routes.py` |
 | **SEC-02** Credencial hardcoded | CRITICAL | `SECRET_KEY` vem de `SECRET_KEY` env; `/health` deixou de devolver `secret_key`/`db_path`/`debug` | `config.py`, `app.py:22`, `services/health_service.py` |
-| **SEC-03** Senhas em texto plano | CRITICAL | Hash com salt (`generate_password_hash`/`check_password_hash`); `senha` fora das respostas; upgrade transparente de seed legado no login | `services/usuario_service.py`, `repositories/usuario_repository.py:listar/buscar_por_id` |
+| **SEC-03** Senhas em texto plano | CRITICAL | Seed e cadastro gravam apenas hash com salt (`generate_password_hash`, scrypt); login usa exclusivamente `check_password_hash`; registros legados em texto puro são re-hasheados no boot; `senha` fora das respostas | `database/schema.py` (`USUARIOS_SEED`, `migrate_legacy_passwords`), `services/usuario_service.py`, `repositories/usuario_repository.py:listar/buscar_por_id` |
 | **SEC-04** Rotas sem auth | HIGH | `POST /admin/reset-db` exige `Authorization: Bearer <ADMIN_TOKEN>` (fail-closed). `/login` emite token de sessão assinado; escrita de produtos exige nível `admin`, cadastro de pedido exige nível `cliente` (só para o próprio usuário) e status de pedido exige `admin` | `middleware/auth.py`, `services/auth_service.py`, `routes/produto_routes.py`, `routes/pedido_routes.py`, `routes/relatorio_routes.py:36` |
 | **SEC-06** PII/dados sensíveis em log | LOW | `print` de e-mails e notificações substituídos por `logging` sem PII | `services/notificacao_service.py`; `controllers/__init__.py` sem `print` de e-mail |
 | **ARCH-01** Lógica de negócio no Controller | HIGH | Regras (cálculo de total, estoque, faixas de desconto, status) extraídas para services; controllers só orquestram | `services/pedido_service.py`, `services/produto_service.py`, `controllers/__init__.py` |
@@ -82,7 +83,7 @@ de complexidade em um único ponto.
 | **QUAL-04** Estado global mutável | MEDIUM | Conexão passou a ter escopo de request (`flask.g`) com teardown; sem singleton | `database/connection.py` |
 | **QUAL-05** Imports/config mortos | LOW | Removidos `import os`/`import sqlite3` mortos; `SECRET_KEY` agora é usada de verdade | `database/`, `models/` |
 | **QUAL-07** Config hardcoded | LOW | Host, porta, debug, caminho do banco e versão/ambiente lidos de env | `config.py`, `.env.example` |
-| **QUAL-08** Sem testes | LOW | Smoke test de contrato com 68 checks (inclui autorização por nível) | `tests/smoke_contract.py` |
+| **QUAL-08** Sem testes | LOW | Smoke test de contrato com 73 checks (inclui autorização por nível e SEC-03 em repouso) | `tests/smoke_contract.py` |
 
 ### Não resolvidos nesta fase (documentados como trabalho futuro)
 
@@ -117,7 +118,7 @@ Formato de resposta preservado em todas as rotas de sucesso: `{"dados": ..., "su
 incluindo os comportamentos inseguros então vigentes (SQLi vazando tabela, `secret_key` no
 `/health`, senha exposta, `/admin/query` executando SQL).
 
-**Depois da refatoração**: **68/68 checks** (68 = 45 originais + 13 de segurança/validação + 10 de autorização por nível).
+**Depois da refatoração**: **73/73 checks** (73 = 45 originais + 13 de segurança/validação + 10 de autorização por nível + 5 de SEC-03 em repouso/migração).
 
 ### Boot real (não apenas test client)
 
@@ -179,19 +180,41 @@ todas as rotas exercitadas via `curl`:
 - [x] Arquivos antigos removidos (`controllers.py`, `models.py`, `database.py` deletados)
 - [x] `git status` sem sobras (`__pycache__` e `loja.db` de execução removidos)
 
-## 6. Estratégia de migração de senhas (Padrão 6)
+## 6. Estratégia de migração de senhas (Padrão 6 — SEC-03)
 
-O seed original gravava senhas em texto puro (`admin123`, `123456`, `senha123`).
-Para não quebrar o login dos usuários existentes:
+O seed original gravava senhas em texto puro (`admin123`, `123456`, `senha123`)
+e o login comparava o valor recebido com o armazenado. A reexecução da Etapa 6
+removeu os dois resíduos:
 
-1. Novos usuários: hash com salt desde a criação (`services/usuario_service.py:criar`).
-2. Usuários legados: `autenticar` compara o texto puro quando o valor armazenado
-   não tem prefixo de hash (`pbkdf2:`/`scrypt:`/`argon2:`) e, no sucesso,
-   **re-hasheia** via `usuario_repository.atualizar_senha` (upgrade transparente).
-3. Nenhuma resposta de API carrega o campo `senha`.
+1. **Seed com hash:** `database/schema.py:USUARIOS_SEED` contém hashes scrypt
+   pré-computados (`werkzeug.security`). As credenciais de desenvolvimento
+   continuam documentadas no `README.md`, mas nenhum valor em texto puro é
+   persistido no boot.
+2. **Cadastro com hash:** `services/usuario_service.py:criar` gera hash com
+   salt antes de inserir.
+3. **Migração de legado no boot:** `database/schema.py:migrate_legacy_passwords`
+   roda em `ensure_schema` a cada inicialização (inclusive em bancos já
+   semeados): identifica linhas cujo valor não começa com
+   `pbkdf2:`/`scrypt:`/`argon2`, gera o hash do valor existente e atualiza a
+   linha **antes de qualquer autenticação**. A rotina é idempotente.
+4. **Login sem texto puro:** `services/usuario_service.py:autenticar` aceita
+   apenas valores com prefixo de hash e usa exclusivamente
+   `check_password_hash`. Se um registro legado escapar da migração, a
+   autenticação falha fechada (`401`) — não existe `stored == senha_informada`.
+5. **Sem exposição:** `GET /usuarios` e `GET /usuarios/<id>` continuam sem o
+   campo `senha`.
 
-**Recomendação:** rodar um reset de senha em lote ou re-hash de todos os
-registros legados, eliminando a comparação em texto puro do caminho de login.
+**Evidência executada:**
+
+- Banco novo (`/tmp/opencode/cs-etapa6.db`): as 3 senhas do seed terminaram
+  como `scrypt:32768...` (162 caracteres), nenhuma igual a `admin123`,
+  `123456` ou `senha123`; login dos 3 usuários retornou `200`.
+- Banco legado (`/tmp/opencode/cs-legacy.db` com `joao@email.com` = `legado123`):
+  após o boot, o valor virou `scrypt:...` e o login com `legado123` retornou
+  `200`, sem `senha` na resposta.
+- `python tests/smoke_contract.py` → **73/73 checks**, incluindo seed em
+  repouso, ausência de texto puro, migração de legado e rejeição de
+  comparação em claro.
 
 ## 7. Limitações e trabalho futuro
 
@@ -242,4 +265,22 @@ relatórios continuam públicas (preservação de contrato); `POST /usuarios`
 segue aberto como cadastro público. Proteção de leitura e rate limiting ficam
 como trabalho futuro.
 
-**Validação:** `python tests/smoke_contract.py` → **68/68 checks**.
+**Validação:** `python tests/smoke_contract.py` → **73/73 checks**.
+
+## 9. Atualização — SEC-03 em repouso e migração de legado (Etapa 6)
+
+A rodada anterior ainda deixava dois resíduos de SEC-03: o seed gravava
+`admin123`/`123456`/`senha123` em texto puro e `autenticar` aceitava comparação
+direta para valores sem prefixo de hash. Esta atualização elimina ambos:
+
+| Item | Antes | Depois |
+|---|---|---|
+| Seed (`database/schema.py`) | senhas literais em claro | hashes scrypt pré-computados |
+| Login (`services/usuario_service.py`) | `check_password_hash` **ou** `stored == senha` | somente `check_password_hash`; valor sem prefixo de hash → `401` |
+| Registros legados | re-hash apenas no login bem-sucedido | `migrate_legacy_passwords` re-hasheia **no boot**, antes de autenticar |
+| `atualizar_senha` no repository | usado pelo fallback de login | removido (código morto) |
+| `tests/smoke_contract.py` | 68 checks | 73 checks (seed em repouso, ausência de texto puro, migração e rejeição de texto puro) |
+
+**Evidência:** banco novo com 3 hashes `scrypt:` (162 chars) e login `200`;
+banco legado com `legado123` migrado para `scrypt:` no boot e login `200`;
+`GET /usuarios` e `GET /usuarios/<id>` sem o campo `senha`; smoke **73/73**.

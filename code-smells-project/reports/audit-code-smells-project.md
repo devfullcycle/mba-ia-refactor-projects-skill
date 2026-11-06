@@ -1,7 +1,8 @@
 # Audit Report — code-smells-project
 
 > Gerado pela skill `refactor-arch` (Fase 2 — Auditoria).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project` | Baseado na análise de: `reports/analysis-code-smells-project.md`
+> Data: 2026-11-05 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project` | Baseado na análise de: `reports/analysis-code-smells-project.md`
+> Reexecução da Etapa 6: os achados abaixo são os da auditoria original e servem de critério de aceite para a validação. Os critérios objetivos de fechamento de CRITICAL/HIGH foram adicionados na seção 2.1.
 
 ## 1. Resumo
 
@@ -665,6 +666,22 @@ Não há `tests/`, `conftest.py`, `pytest.ini` nem dependência de teste (`pytes
 **Referência:** `references/anti-patterns.md` → QUAL-08
 
 ---
+
+### 2.1 Critérios objetivos de fechamento (CRITICAL/HIGH)
+
+Um achado só é considerado **RESOLVIDO** na Fase 4 quando todos os critérios
+abaixo são comprovados por código e por execução (smoke/HTTP real). Qualquer
+critério pendente rebaixa a classificação para pendente e bloqueia o gate.
+
+| ID | Severidade | Critério de fechamento |
+|---|---|---|
+| **SEC-01** | CRITICAL | (a) nenhuma query interpola entrada de usuário — todos os valores usam `?`; (b) `POST /admin/query` removida (404); (c) payload de injeção (`' OR '1'='1`) não altera resultado de busca nem autentica no login. |
+| **SEC-02** | CRITICAL | (a) nenhum segredo literal no código; `SECRET_KEY` obrigatória via ambiente; (b) `GET /health` não devolve `secret_key`, `db_path` nem `debug`; (c) grep de segredos sem ocorrências. |
+| **SEC-03** | CRITICAL | (a) seed e cadastro persistem apenas hash com sal (`scrypt:`/`pbkdf2:`/`argon2`); (b) nenhuma senha do seed em texto puro no banco; (c) login usa exclusivamente `check_password_hash`; (d) registros legados em texto puro são re-hasheados no boot e continuam autenticando; (e) `GET /usuarios` e `GET /usuarios/<id>` não expõem `senha`; (f) não existe caminho de comparação `stored == senha_informada`. |
+| **SEC-04** | HIGH | (a) rotas de escrita exigem token de sessão; (b) nível `admin`/`cliente` verificado no servidor, nunca no body; (c) `401` sem token, `403` com nível insuficiente ou posse indevida; (d) `/admin/reset-db` falha fechado sem `ADMIN_TOKEN`. |
+| **ARCH-01** | HIGH | controllers apenas orquestram (request → validação → service → resposta), sem regra de negócio, cálculo ou efeito colateral. |
+| **ARCH-02** | HIGH | nenhum SQL em `controllers/` ou `app.py`; acesso a dados concentrado em `repositories/` (e services administrativos dedicados). |
+| **QUAL-02** | HIGH | validação de presença/tipo centralizada; body ausente ou campo com tipo inválido devolve `400` (nunca `500`). |
 
 ## 3. Mapa de calor por arquivo
 

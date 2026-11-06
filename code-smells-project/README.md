@@ -31,13 +31,23 @@ estático para `POST /admin/reset-db`).
 | `POST /admin/reset-db` | `ADMIN_TOKEN` estático |
 
 Sem token (ou com token inválido/expirado) a resposta é `401`; com token de
-nível insuficiente é `403`. Usuários do seed:
+nível insuficiente é `403`. Usuários do seed (credenciais **apenas de
+desenvolvimento**):
 
 | E-mail | Senha | Nível |
 |---|---|---|
 | `admin@loja.com` | `admin123` | `admin` |
 | `joao@email.com` | `123456` | `cliente` |
 | `maria@email.com` | `senha123` | `cliente` |
+
+As senhas do seed são gravadas no banco como **hash com salt**
+(`werkzeug.security`, scrypt); nenhuma senha em texto puro é persistida.
+Bancos criados por versões antigas são migrados automaticamente no boot:
+`database/schema.py:migrate_legacy_passwords` detecta valores sem prefixo de
+hash, gera o hash do valor existente e atualiza a linha antes de qualquer
+autenticação. O login usa apenas `check_password_hash` — não existe caminho de
+comparação em texto puro. `GET /usuarios` e `GET /usuarios/<id>` não devolvem
+o campo `senha`.
 
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:5000/login \

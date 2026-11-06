@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 
-from errors import NotFoundError, ValidationError
+from errors import ForbiddenError, NotFoundError, ValidationError
 from repositories.category_repository import CategoryRepository
 from repositories.task_repository import TaskRepository
 from repositories.user_repository import UserRepository
@@ -53,8 +53,9 @@ class TaskService:
         }
 
     # --- comandos ------------------------------------------------------
-    def create_task(self, payload):
+    def create_task(self, payload, actor_id=None, actor_role=None):
         data = validate_schema(TaskCreateSchema(), payload)
+        data['user_id'] = self._resolve_owner(data.get('user_id'), actor_id, actor_role)
         self._ensure_user(data.get('user_id'))
         self._ensure_category(data.get('category_id'))
 
@@ -70,13 +71,17 @@ class TaskService:
         )
         return task.to_dict()
 
-    def update_task(self, task_id, payload):
+    def update_task(self, task_id, payload, actor_id=None, actor_role=None):
         task = self._get_or_404(task_id)
+        self._ensure_owner(task, actor_id, actor_role)
         payload = self._normalize_due_date(payload)
         data = validate_schema(TaskUpdateSchema(), payload)
 
-        self._ensure_user(data['user_id']) if 'user_id' in data else None
-        self._ensure_category(data['category_id']) if 'category_id' in data else None
+        if 'user_id' in data:
+            self._ensure_owner_change(data['user_id'], actor_id, actor_role)
+            self._ensure_user(data['user_id'])
+        if 'category_id' in data:
+            self._ensure_category(data['category_id'])
 
         for field in ('title', 'description', 'status', 'priority', 'user_id', 'category_id'):
             if field in data:
@@ -90,11 +95,37 @@ class TaskService:
         self.tasks.save()
         return task.to_dict()
 
-    def delete_task(self, task_id):
+    def delete_task(self, task_id, actor_id=None, actor_role=None):
         task = self._get_or_404(task_id)
+        self._ensure_owner(task, actor_id, actor_role)
         self.tasks.delete(task)
 
     # --- auxiliares ----------------------------------------------------
+    @staticmethod
+    def _is_admin(actor_role):
+        return actor_role == 'admin'
+
+    def _resolve_owner(self, requested_user_id, actor_id, actor_role):
+        """Deriva o dono do token; admin pode criar em nome de terceiro."""
+        if self._is_admin(actor_role):
+            return requested_user_id if requested_user_id is not None else actor_id
+        if requested_user_id is not None and requested_user_id != actor_id:
+            raise ForbiddenError('Não é permitido criar tarefa para outro usuário')
+        return actor_id
+
+    def _ensure_owner(self, task, actor_id, actor_role):
+        if self._is_admin(actor_role):
+            return
+        if task.user_id != actor_id:
+            raise ForbiddenError('Acesso negado à tarefa')
+
+    def _ensure_owner_change(self, new_user_id, actor_id, actor_role):
+        """Impede que não-admin transfira a tarefa para terceiro."""
+        if self._is_admin(actor_role):
+            return
+        if new_user_id != actor_id:
+            raise ForbiddenError('Não é permitido transferir a tarefa para outro usuário')
+
     def _get_or_404(self, task_id):
         task = self.tasks.get_by_id(task_id)
         if not task:

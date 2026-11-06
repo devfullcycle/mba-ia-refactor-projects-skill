@@ -1,6 +1,6 @@
 # Refactor Playbook — Fase 3 (Refatoração)
 
-Padrões de refatoração **agnósticos de linguagem**. Os exemplos usam pseudocódigo; aplique com os idiomas da stack detectada na Fase 1, usando as tabelas de tradução ao final de cada padrão.
+Padrões de refatoração **agnósticos de linguagem**. Todos os exemplos usam pseudocódigo; aplique com os idiomas da stack detectada na Fase 1, usando as tabelas de tradução ao final de cada padrão. As tabelas por stack são referências de tradução — as regras e os testes de cada padrão valem para qualquer tecnologia.
 
 ## Padrão 1 — Extrair Repository (queries parametrizadas)
 
@@ -109,9 +109,80 @@ class Config:
 
 ## Padrão 4 — Error handling centralizado
 
-**Antes:** bloco de captura genérica em cada handler (`try/except Exception`, `catch (e)`), cada um formatando resposta de erro à sua maneira.
+**Quando:** cada handler tem seu próprio bloco de captura genérica (`try/except`, `try/catch`) e monta a resposta de erro de um jeito diferente.
 
-**Depois:** registrar o mecanismo global do framework; handlers deixam exceções propagarem.
+**Antes:**
+```
+function criarProduto(request):
+    try:
+        dados = request.body
+        se vazio(dados["nome"]):
+            return response(400, {"erro": "nome obrigatório"})
+        produto = produtoRepo.create(dados)
+        return response(201, {"dados": produto})
+    catch Exception as e:
+        return response(500, {"erro": texto(e)})     // vaza detalhe interno
+
+function buscarProduto(request, id):
+    try:
+        produto = produtoRepo.getById(id)
+        se produto == nulo:
+            return response(404, {"erro": "não encontrado"})
+        return response(200, {"dados": produto})
+    catch Exception as e:
+        return response(500, {"erro": "falha"})       // formato diferente do anterior
+```
+
+**Depois:**
+```
+// domínio — exceções explícitas, sem conhecer HTTP
+class ValidationError   extends Erro
+class UnauthorizedError extends Erro
+class ForbiddenError    extends Erro
+class NotFoundError     extends Erro
+class ConflictError     extends Erro
+
+// controller — só orquestra; exceções propagam
+function criarProduto(request):
+    dados = validar(ProdutoSchema, request.body)
+    return response(201, produtoService.criar(dados))
+
+function buscarProduto(request, id):
+    return response(200, produtoService.buscar(id))
+
+// um único ponto de tradução para HTTP
+registrarErrorHandler(ValidationError, function(err):
+    return response(400, {"erro": err.mensagem}))
+
+registrarErrorHandler(UnauthorizedError, function(err):
+    return response(401, {"erro": err.mensagem}))
+
+registrarErrorHandler(ForbiddenError, function(err):
+    return response(403, {"erro": err.mensagem}))
+
+registrarErrorHandler(NotFoundError, function(err):
+    return response(404, {"erro": err.mensagem}))
+
+registrarErrorHandler(ConflictError, function(err):
+    return response(409, {"erro": err.mensagem}))
+
+registrarErrorHandler(Exception, function(err):
+    log.error(err)
+    return response(500, {"erro": "erro interno"}))   // sem stack trace na resposta
+```
+
+**Mapeamento mínimo:**
+
+| Exceção de domínio | HTTP |
+|---|---|
+| `ValidationError` | 400 |
+| `UnauthorizedError` | 401 |
+| `ForbiddenError` | 403 |
+| `NotFoundError` | 404 |
+| `ConflictError` | 409 |
+| qualquer outra | 500 (mensagem genérica, sem stack trace em produção) |
+
+**Mecanismo por stack:**
 
 | Stack | Mecanismo |
 |---|---|
@@ -123,20 +194,57 @@ class Config:
 | Laravel | `app/Exceptions/Handler.php` |
 | Gin/Echo | middleware de recovery |
 
-**Mapeamento mínimo:** erro de validação → 400; recurso não encontrado → 404; não autorizado → 401/403; demais → 500 com mensagem genérica (sem vazar stack trace em produção).
-
 ## Padrão 5 — Validação de entrada
 
-**Antes:** checks manuais espalhados e inconsistentes por handler; body usado cru.
+**Quando:** o handler usa `request.body`/`req.body` cru e repete `se`s de formato, misturando validação de schema com regra de negócio.
 
-**Depois:** validador por recurso, invocado no início do handler; retorno 400 com lista de erros.
+**Antes:**
+```
+function criarProduto(request):
+    dados = request.body                              // body cru
+    se vazio(dados["nome"]):
+        return response(400, {"erro": "nome obrigatório"})
+    se dados["preco"] == nulo:
+        return response(400, {"erro": "preço obrigatório"})
+    se dados["preco"] < 0:
+        return response(400, {"erro": "preço não pode ser negativo"})
+    se dados["categoria"] notIn CATEGORIAS:
+        return response(400, {"erro": "categoria inválida"})
+    se produtoRepo.buscarPorNome(dados["nome"]) != nulo:
+        return response(409, {"erro": "produto duplicado"})   // regra de negócio no controller
+    return response(201, produtoRepo.create(dados))
+```
+
+**Depois:**
+```
+// schema — formato e tipos
+schema ProdutoSchema:
+    nome:      texto, obrigatório, mínimo 1
+    preco:     número, obrigatório, mínimo 0
+    categoria: texto, obrigatório, in CATEGORIAS
+
+// controller — valida no início e devolve 400 com a lista completa
+function criarProduto(request):
+    dados, erros = validar(ProdutoSchema, request.body)
+    se erros não vazio:
+        return response(400, {"erros": erros})
+    return response(201, produtoService.criar(dados))
+
+// service — regra de negócio, não formato
+class ProdutoService:
+    function criar(dados):
+        se produtoRepo.buscarPorNome(dados["nome"]) != nulo:
+            lançar ConflictError("produto duplicado")
+        return produtoRepo.create(dados)
+```
 
 ```
+// validador — retorna todos os erros de uma vez
 function validarProduto(dados) -> lista de erros:
     erros = []
-    se vazio(dados["nome"]):          erros.add("nome é obrigatório")
-    se dados["preco"] < 0:            erros.add("preço não pode ser negativo")
-    se dados["categoria"] notIn LISTA: erros.add("categoria inválida")
+    se vazio(dados["nome"]):            erros.add("nome é obrigatório")
+    se dados["preco"] < 0:              erros.add("preço não pode ser negativo")
+    se dados["categoria"] notIn LISTA:  erros.add("categoria inválida")
     return erros
 ```
 
@@ -146,14 +254,82 @@ function validarProduto(dados) -> lista de erros:
 
 ## Padrão 6 — Hash de senhas
 
-**Antes:** senha em texto puro ou hash fraco (MD5/SHA1) persistida e retornada em responses.
+**Quando:** senha em texto puro ou hash fraco (MD5/SHA1) é persistida, comparada no login ou devolvida em responses — inclusive em seeds e bases legadas.
+
+**Antes:**
+```
+// cadastro — senha em texto puro no banco e na response
+function criarUsuario(request):
+    dados = request.body
+    usuario = usuarioRepo.create({
+        "nome":  dados["nome"],
+        "senha": dados["senha"]                 // texto puro persistido
+    })
+    return response(201, {"id": usuario["id"], "senha": usuario["senha"]})
+
+// login — comparação em texto puro
+function login(request):
+    usuario = usuarioRepo.buscarPorEmail(request.body["email"])
+    se usuario != nulo e usuario["senha"] == request.body["senha"]:
+        return response(200, {"token": gerarToken(usuario)})
+    return response(401, {"erro": "credenciais inválidas"})
+
+// variante igualmente incorreta: hash fraco sem salt
+function criarUsuarioComMd5(request):
+    usuario = usuarioRepo.create({
+        "nome":  request.body["nome"],
+        "senha": md5(request.body["senha"])      // MD5 sem salt
+    })
+    return response(201, {"id": usuario["id"], "senha": usuario["senha"]})
+```
 
 **Depois:**
+```
+// cadastro — hash com salt antes de persistir
+function criarUsuario(request):
+    dados = validar(UsuarioCreateSchema, request.body)
+    usuario = usuarioRepo.create({
+        "nome":      dados["nome"],
+        "senhaHash": hashSenha(dados["senha"])   // bcrypt/argon2/PBKDF2 + salt
+    })
+    return response(201, serializarPublico(usuario))
+
+// login — somente verificação de hash, sem fallback em texto puro
+function login(request):
+    usuario = usuarioRepo.buscarPorEmail(request.body["email"])
+    se usuario == nulo ou não verificarSenha(usuario["senhaHash"], request.body["senha"]):
+        lançar UnauthorizedError("credenciais inválidas")
+    return response(200, {"token": gerarToken(usuario)})
+
+// serialização — o campo de senha nunca sai na response
+function serializarPublico(usuario):
+    return {"id": usuario["id"], "nome": usuario["nome"], "email": usuario["email"]}
+```
+
+**Seed e legado — também precisam estar hasheados:**
+```
+// seed — hash antes do INSERT (nunca o valor literal)
+usuarioRepo.create({
+    "email":     "admin@exemplo.com",
+    "senhaHash": hashSenha(ADMIN_PASSWORD)
+})
+
+// migração única — converte senhas legadas sem prefixo de hash
+para cada usuario em usuarioRepo.listarTodos():
+    se não pareceHash(usuario["senha"]):          // sem scrypt:/pbkdf2:/$2
+        usuarioRepo.atualizarSenha(
+            usuario["id"],
+            hashSenha(usuario["senha"])
+        )
+```
+
+**Regras:**
 - Hash com algoritmo com salt: **bcrypt**, **argon2** ou **PBKDF2** (alto fator de iteração).
 - Nunca retornar o campo senha em responses — excluir na serialização ou na query (`SELECT` sem a coluna).
 - Senhas legadas exigem **migração de dados**: re-hash no próximo login ou reset forçado. Documente a estratégia no relatório da Fase 3.
+- **A correção só é válida se não restar senha em texto puro no banco, inclusive no seed.** Ter `generate_password_hash`/equivalente em um endpoint não basta se o seed ou o fallback de login continuarem em texto puro.
 
-**Bibliotecas por stack:** Python: bcrypt, argon2-cffi, `hashlib.pbkdf2_hmac`. Node: bcrypt, argon2. Java: `BCryptPasswordEncoder`. Ruby: bcrypt (`has_secure_password`). PHP: `password_hash()`. Go: `golang.org/x/crypto/bcrypt`.
+**Bibliotecas por stack:** Python: bcrypt, argon2-cffi, `hashlib.pbkdf2_hmac`, Flask/Werkzeug (`generate_password_hash`/`check_password_hash`). Node: bcrypt, argon2. Java: `BCryptPasswordEncoder`. Ruby: bcrypt (`has_secure_password`). PHP: `password_hash()`. Go: `golang.org/x/crypto/bcrypt`.
 
 ## Padrão 7 — N+1 → query única
 
@@ -191,24 +367,164 @@ pedidos = agrupar(rows)   // agrupa linhas do JOIN em objetos aninhados
 
 ## Padrão 8 — Rotas separadas do entrypoint
 
-**Antes:** entrypoint com dezenas de registros de rota misturados a boot, config e handlers inline.
+**Quando:** o entrypoint registra rotas diretamente (`@app.route`, `app.add_url_rule`, `app.get`, etc.) e mistura boot, configuração e handlers no mesmo arquivo.
 
-**Depois:** um módulo de rotas por recurso; o entrypoint só compõe a aplicação.
-
+**Antes:**
 ```
-// routes/produtos — só registro
-grupo = router.group("/produtos")
-grupo.get("",        produtoCtrl.listar)
-grupo.get("/:id",    produtoCtrl.buscar)
-grupo.post("",       produtoCtrl.criar)
-grupo.put("/:id",    produtoCtrl.atualizar)
-grupo.delete("/:id", produtoCtrl.deletar)
+// entrypoint — boot, config, rotas e handlers no mesmo arquivo
+app = criarAplicacao()
+app.config["SECRET_KEY"] = "chave-literal"          // segredo literal
+banco = conectar("loja.db")
 
-// entrypoint
-app.register(routes.produtos, routes.usuarios, routes.pedidos)
+app.route("GET", "/produtos", function():
+    return response(200, banco.query("SELECT * FROM produtos"))
+)
+
+app.route("POST", "/produtos", function(request):
+    return response(201, banco.query("INSERT INTO produtos ...", request.body))
+)
+
+app.route("GET", "/usuarios", function():
+    return response(200, banco.query("SELECT * FROM usuarios"))
+)
+
+app.iniciar(porta=5000)
 ```
+
+**Depois:**
+```
+// routes/produtos — só registro de rotas
+moduloProdutos = novoModuloRotas("/produtos")
+
+moduloProdutos.get("",        produtoController.listar)
+moduloProdutos.get("/:id",    produtoController.buscar)
+moduloProdutos.post("",       produtoController.criar)
+moduloProdutos.put("/:id",    produtoController.atualizar)
+moduloProdutos.delete("/:id", produtoController.deletar)
+
+// routes/usuarios — idem, um módulo por recurso
+moduloUsuarios = novoModuloRotas("/usuarios")
+moduloUsuarios.get("",     usuarioController.listar)
+moduloUsuarios.post("",    usuarioController.criar)
+
+// entrypoint — apenas compõe a aplicação
+function criarAplicacao(config):
+    app = novaAplicacao(config)
+    app.registrar(moduloProdutos, moduloUsuarios)
+    app.registrarErrorHandlers()
+    return app
+```
+
+**Tradução:** `app.registrar(...)` equivale a `register_blueprints(app)` no Flask ou `app.use('/produtos', produtoRoutes)` no Express. O nome do arquivo de rotas segue a stack (`routes/produtos.py`, `routes/produtos.js`, etc.).
 
 **Regra:** o módulo de rotas importa controllers, nunca services ou repositories diretamente.
+
+## Padrão 9 — Autenticação e autorização (default deny)
+
+**Quando:** rotas de escrita, rotas administrativas, dados de outro usuário ou campos de papel/posse vindos do cliente.
+
+**Antes:**
+```
+function criarUsuario(request):
+    dados = request.body                       // qualquer anônimo
+    papel = dados["role"] ?? "user"            // cliente escolhe o próprio privilégio
+    usuario = usuarioService.criar(dados, papel)
+    return response(201, usuario)
+
+function criarTarefa(request):
+    dados = request.body
+    dono = dados["usuarioId"]                  // cliente escolhe em nome de quem cria
+    return response(201, tarefaService.criar(dados, dono))
+
+function atualizarUsuario(request, id):
+    return response(200, usuarioService.atualizar(id, request.body))  // qualquer anônimo edita
+
+function excluirUsuario(request, id):
+    usuarioService.excluir(id)                                       // qualquer anônimo exclui
+    return response(204)
+```
+
+**Depois:**
+```
+// guard central — toda rota é privada por padrão; pública é exceção declarada
+function guard(request):
+    token = extrairToken(request)              // Authorization: Bearer ...
+    se ausente(token):
+        lançar UnauthorizedError("credencial ausente")
+    contexto = verificarToken(token)           // assinatura, expiração, emissor
+    request.usuario = {
+        "id":    contexto["sub"],
+        "papel": contexto["role"]
+    }
+    próximo(request)
+
+// registrado uma vez; em stacks sem middleware global, use decorator/wrapper em todas as rotas
+registrarGuardGlobal(guard)
+
+function exigirPapel(request, papelEsperado):
+    se request.usuario["papel"] != papelEsperado:
+        lançar ForbiddenError("papel insuficiente")
+
+// gestão de usuários — somente admin
+function criarUsuario(request):
+    exigirPapel(request, "admin")              // 401 já garantido pelo guard global
+    dados = validar(UsuarioCreateSchema, request.body)
+    return response(201, usuarioService.criar(dados))
+
+// recurso de domínio — dono vem do token, nunca do body
+function criarTarefa(request):
+    dados = validar(TarefaCreateSchema, request.body)
+    se dados["usuarioId"] existe e dados["usuarioId"] != request.usuario["id"]:
+        lançar ForbiddenError("não é permitido criar em nome de terceiro")
+    dados["usuarioId"] = request.usuario["id"] // valor do token prevalece
+    return response(201, tarefaService.criar(dados))
+
+// leitura/edição de recurso existente — dono ou admin
+function buscarTarefa(request, id):
+    tarefa = tarefaService.buscar(id)
+    se tarefa["usuarioId"] != request.usuario["id"]
+       e request.usuario["papel"] != "admin":
+        lançar ForbiddenError("acesso negado")
+    return response(200, tarefa)
+
+// rotas públicas são exceções explícitas e mínimas
+registrarRotaPublica("POST", "/login", login)
+```
+
+**Regras:**
+- **Default deny:** sem credencial → `401`; credencial sem o papel exigido → `403`.
+- Em stacks sem middleware global, aplique o guard como decorator/wrapper em todas as rotas e mantenha uma allowlist explícita para as públicas.
+- Gestão de usuários (`POST`/`PUT`/`DELETE` e listagem administrativa) exige papel `admin`.
+- Rotas de domínio exigem o dono do recurso ou `admin`; criação em nome de terceiro só com posse derivada do token.
+- **Nunca** confiar em `role`, `tipo`, `usuario_id` ou `owner_id` enviados pelo cliente.
+- **A ausência de autenticação não pode ser o default:** a aplicação deve falhar fechada. Nenhuma correção pode depender de flag opt-in (`AUTH_REQUIRED=true` e similares).
+- Rotas públicas são exceções explícitas e mínimas (ex.: login, health check).
+- Verificar assinatura, expiração e emissor do token; não confiar apenas na presença dele.
+- Respostas de autenticação/autorização não devem revelar se o recurso existe; use `401`/`403` de forma consistente.
+
+**Tabela por stack (tradução do conceito):**
+
+| Stack | Guard central | Papel/role | Identidade do token |
+|---|---|---|---|
+| Flask | `before_request` + decorator | decorator `@require_role` | `g.usuario_id`, `g.papel` |
+| Django | middleware / `LoginRequiredMixin` | `PermissionRequiredMixin` / `@permission_required` | `request.user` |
+| Express | middleware `(req, res, next)` | middleware `requireRole("admin")` | `req.user` |
+| Spring | `SecurityFilterChain` | `@PreAuthorize("hasRole('ADMIN')")` | `Authentication` / `Principal` |
+| Rails | `before_action :authenticate` | `before_action` + Pundit (`authorize`) | `current_user` |
+| Laravel | middleware `auth` | middleware `can:` / `Gate` | `auth()->user()` |
+| Go | middleware `http.Handler` | checagem de papel no middleware | `context.Context` |
+| ASP.NET | `[Authorize]` | `[Authorize(Roles="admin")]` | `HttpContext.User` |
+
+**Testes obrigatórios — sempre com a configuração padrão:**
+- [ ] Escrita sem credencial → `401`.
+- [ ] Credencial válida sem o papel exigido → `403`.
+- [ ] Credencial com o papel correto → `200`/`201`.
+- [ ] Gestão de usuários: não-admin → `403`; admin → sucesso.
+- [ ] Body com `role`/`usuario_id`/`owner_id` divergente do token → valor do body ignorado (ou `403`), nunca aceito.
+- [ ] Token expirado ou com assinatura inválida → `401`.
+- [ ] Dono acessando o próprio recurso → sucesso; outro usuário → `403`.
+- [ ] Rotas públicas continuam acessíveis e apenas elas.
+- [ ] Suite executada com o default do `.env.example`/config, sem flag especial que ligue a correção.
 
 ## Checklist por entidade refatorada
 
@@ -219,6 +535,10 @@ app.register(routes.produtos, routes.usuarios, routes.pedidos)
 - [ ] Nenhum bloco de captura genérica no caminho do recurso
 - [ ] Nenhum segredo/config literal introduzido
 - [ ] Responses do recurso não expõem campos sensíveis
+- [ ] Rotas de escrita exigem autenticação por padrão (`401` sem credencial)
+- [ ] Rotas administrativas exigem papel `admin` (`403` sem papel)
+- [ ] Identidade, papel e posse vêm do token, nunca do body
+- [ ] Nenhuma senha em texto puro no banco, inclusive no seed/legado
 - [ ] Endpoints do recurso exercitados manualmente após a movimentação
 - [ ] Código antigo removido (sem duplicata entre camadas)
 
@@ -243,8 +563,8 @@ Exigem **passo dedicado** (não se resolvem só movendo código):
 
 | Anti-pattern | Resolução |
 |---|---|
-| SEC-03 Crypto fraca | Substituir hash + migrar dados legados (Padrão 6) |
-| SEC-04 Rota sem auth | Criar middleware de auth e aplicar nas rotas sensíveis |
+| SEC-03 Crypto fraca | Substituir hash + migrar dados legados (Padrão 6); seed e banco em repouso também precisam estar hasheados |
+| SEC-04 Rota sem auth | Autenticação e autorização default deny (Padrão 9), com papel `admin` para gestão de usuários e posse derivada do token |
 | SEC-05 XSS | Revisar serialização/templates que emitem HTML |
 | SEC-06 Log sensível | Revisar logs; sanitizar antes de registrar |
 | PERF-01 N+1 | Reescrever query com JOIN/eager loading (Padrão 7) |

@@ -1,7 +1,8 @@
 # Análise de Codebase — ecommerce-api-legacy
 
 > Gerado pela skill `refactor-arch` (Fase 1 — Análise).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
+> Data: 2026-11-05 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
+> Reexecução da Etapa 7: a análise abaixo descreve o codebase **original** (entrada da skill) e permanece válida como contrato de referência. O estado refatorado e as correções do feedback estão em `reports/refactor-ecommerce-api-legacy.md` e `reports/validation-ecommerce-api-legacy.md`.
 
 ## 1. Resumo
 

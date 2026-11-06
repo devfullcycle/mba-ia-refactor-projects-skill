@@ -83,6 +83,8 @@ cursor.execute("SELECT * FROM orders WHERE user_id = %s" % user_id)
 
 **Impacto:** Entrada de usuário (`product_id`, `user_id`) é interpolada diretamente na query SQL, permitindo injeção de SQL arbitrário via parâmetros da URL ou body da requisição.
 
+**Critério de fechamento (CRITICAL/HIGH):** <evidência estática + dinâmica que a Fase 3 precisa apresentar para encerrar o achado; ex.: `POST /tasks` sem token → `401` com a configuração padrão>
+
 **Recomendação:** Usar parâmetros posicionais:
 ```python
 cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
@@ -168,6 +170,7 @@ Ordem sugerida de correção (do mais crítico ao menos crítico):
 - **Código de evidência obrigatório.** Sempre mostre o trecho problemático (3-10 linhas).
 - **Recomendação com exemplo.** Sempre inclua como deveria ser (snippet curto).
 - **Não duplique.** Mesmo anti-pattern no mesmo arquivo = um achado com múltiplos locais.
+- **Critério de fechamento obrigatório para CRITICAL/HIGH.** O impacto deve ser descrito de forma verificável; a Fase 3 carrega esse critério para a Matriz de Fechamento. Achado sem critério de fechamento não pode ser encerrado como `RESOLVIDO`.
 - **Mapa de calor obrigatório.** Tabela por arquivo mostra onde a dívida técnica se concentra.
 - **Sem modificar código.** Fase 2 só reporta e escreve o relatório. A confirmação do usuário é necessária antes de iniciar a Fase 3 (refatoração).
 

@@ -9,6 +9,8 @@ O objetivo desse repositório é exibir um exemplo de como criar uma skill para 
 - **Orquestrador + 4 sub-skills, uma por fase.** O `refactor-arch` não analisa nem refatora: ele lê `reports/`, identifica o estado e carrega a sub-skill adequada (`analyze`, `audit`, `refactor`, `validate`).
 - **Contexto limpo por fase.** Cada sub-skill lê apenas as referências da sua fase, em vez de carregar um único `SKILL.md` com todo o processo.
 - **Gates explícitos.** Fases 1, 2 e 4 não alteram código-fonte (apenas leem e geram relatório); só a Fase 3 escreve código, e apenas após auditoria + confirmação explícita. A Fase 4 é o gate de conclusão.
+- **Gate bloqueante na Fase 4.** Um CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO` reprova o fluxo com status `FAIL` e recomendação `REPROVADO - AÇÃO NECESSÁRIA`. `APROVADO COM RESSALVAS` fica restrito a MEDIUM/LOW, e `VALIDATED` exige `Partial critical/high: 0`.
+- **Segurança por padrão.** Auth/autorização são default deny, sem flag opt-in; gestão de usuários exige `admin`, e identidade/papel/posse vêm do token. Correções de segurança não podem ser adiadas por compatibilidade de contrato.
 - **Estado derivado dos relatórios.** A máquina de estados do orquestrador usa a existência de `reports/analysis-*`, `audit-*`, `refactor-*` e `validation-*` para decidir o próximo passo, tornando o fluxo retomável.
 - **`SKILL.md` curto + referências especializadas.** Os 7 arquivos em `references/` concentram o detalhe: Fase 1 (`stack-detection`, `architecture-detection`, `report-template`), Fase 2 (`anti-patterns`, `audit-report-template`) e Fases 3/4 (`mvc-guidelines`, `refactor-playbook`).
 - **Cópia por projeto.** Cada projeto tem sua cópia em `.claude/skills/`, para que o Claude Code encontre a skill ao executar a partir da raiz do projeto.
@@ -24,6 +26,406 @@ O objetivo desse repositório é exibir um exemplo de como criar uma skill para 
   - **QUAL:** God Class/File, validação ausente, tratamento de erro genérico, estado global mutável, dependência morta, ausência de migrations, configuração hardcoded e ausência de testes.
   - **DEP:** uso de APIs deprecated (`datetime.utcnow()`, `Query.get()`), detectado no `task-manager-api`.
 - Cada item traz severidade, regra de detecção, motivo e critério de correção — o que padroniza o achado e evita severidade inflada.
+
+### Padrões de refatoração (antes/depois em código)
+
+O playbook da Fase 3 tem **9 padrões**, todos com blocos **Antes** e **Depois** em código — não apenas prosa. Os exemplos abaixo resumem o que a skill aplica; o detalhe por stack está em `<projeto>/.claude/skills/refactor-arch/references/refactor-playbook.md`.
+
+#### Padrão 1 — Extrair Repository (queries parametrizadas)
+
+**Antes:**
+```python
+@app.get("/produtos/<int:produto_id>")
+def get_produto(produto_id):
+    cursor.execute(f"SELECT * FROM produtos WHERE id = {produto_id}")  # injeção
+    return jsonify(cursor.fetchone())
+```
+
+**Depois:**
+```python
+# repositories/produto_repository.py
+class ProdutoRepository:
+    def get_by_id(self, produto_id):
+        return self.db.execute(
+            "SELECT * FROM produtos WHERE id = ?", (produto_id,)
+        ).fetchone()
+
+# controllers/produto_controller.py — sem SQL
+def get_produto(produto_id):
+    produto = produto_service.buscar(produto_id)
+    return jsonify({"dados": produto.to_dict()})
+```
+
+#### Padrão 2 — Extrair Service
+
+**Antes:**
+```python
+@app.post("/pedidos")
+def criar_pedido():
+    dados = request.get_json()
+    total = sum(item["preco"] * item["qtd"] for item in dados["itens"])
+    for item in dados["itens"]:
+        estoque = db.execute("SELECT qtd FROM estoque WHERE produto_id = ?",
+                             (item["produto_id"],)).fetchone()
+        if estoque["qtd"] < item["qtd"]:
+            return jsonify({"erro": "sem estoque"}), 400
+    pedido_id = db.execute("INSERT INTO pedidos ...").lastrowid
+    return jsonify({"pedido_id": pedido_id}), 201
+```
+
+**Depois:**
+```python
+# services/pedido_service.py — sem imports de HTTP
+class PedidoService:
+    def criar(self, usuario_id, itens):
+        total = calcular_total(itens)
+        self.estoque.verificar(itens)          # EstoqueInsuficienteError
+        return self.pedido_repo.create(usuario_id, total, itens)
+
+# controllers/pedido_controller.py — só orquestra
+def criar_pedido():
+    dados = validate(PedidoSchema(), request.get_json())
+    pedido = pedido_service.criar(g.usuario_id, dados["itens"])
+    return jsonify({"pedido_id": pedido.id}), 201
+```
+
+#### Padrão 3 — Configuração externalizada
+
+**Antes:**
+```python
+app.config["SECRET_KEY"] = "minha-chave-super-secreta-123"
+DB_PATH = "loja.db"
+PORT = 5000
+```
+
+**Depois:**
+```python
+import os
+from secrets import token_hex
+
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY") or token_hex(32)  # sem literal
+    DB_PATH = os.getenv("DATABASE_PATH", "loja.db")        # default não sensível
+    PORT = int(os.getenv("PORT", "5000"))
+```
+
+Regra: defaults só para valores não sensíveis; segredos sem default fixo e falha explícita em produção.
+
+#### Padrão 4 — Error handling centralizado
+
+**Antes:**
+```python
+@app.post("/produtos")
+def criar_produto():
+    try:
+        ...
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500      # vaza detalhe interno
+
+@app.get("/produtos/<int:produto_id>")
+def buscar_produto(produto_id):
+    try:
+        ...
+    except Exception:
+        return jsonify({"erro": "falha"}), 500     # formato diferente
+```
+
+**Depois:**
+```python
+# errors.py — exceções de domínio sem conhecer HTTP
+class ValidationError(Exception): ...
+class UnauthorizedError(Exception): ...
+class ForbiddenError(Exception): ...
+class NotFoundError(Exception): ...
+class ConflictError(Exception): ...
+
+# app.py — um único ponto de tradução
+@app.errorhandler(ValidationError)
+def validation_error(err):
+    return jsonify({"erro": str(err)}), 400
+
+@app.errorhandler(UnauthorizedError)
+def unauthorized_error(err):
+    return jsonify({"erro": str(err)}), 401
+
+@app.errorhandler(ForbiddenError)
+def forbidden_error(err):
+    return jsonify({"erro": str(err)}), 403
+
+@app.errorhandler(NotFoundError)
+def not_found_error(err):
+    return jsonify({"erro": str(err)}), 404
+
+@app.errorhandler(Exception)
+def internal_error(err):
+    app.logger.exception(err)
+    return jsonify({"erro": "erro interno"}), 500  # sem stack trace na resposta
+```
+
+Mapeamento mínimo: `400`, `401`, `403`, `404`, `409` e `500` genérico.
+
+#### Padrão 5 — Validação de entrada
+
+**Antes:**
+```python
+def criar_produto():
+    dados = request.get_json()                         # body cru
+    if not dados.get("nome"):
+        return jsonify({"erro": "nome obrigatório"}), 400
+    if dados.get("preco") is None or dados["preco"] < 0:
+        return jsonify({"erro": "preço inválido"}), 400
+    if dados.get("categoria") not in CATEGORIAS:
+        return jsonify({"erro": "categoria inválida"}), 400
+    return jsonify(produto_repo.create(dados)), 201
+```
+
+**Depois:**
+```python
+# schemas/validators.py — formato e tipos
+class ProdutoSchema(Schema):
+    nome = fields.Str(required=True, validate=validate.Length(min=1))
+    preco = fields.Float(required=True, validate=validate.Range(min=0))
+    categoria = fields.Str(required=True)
+
+# controller — valida no início e devolve 400 com a lista completa
+def criar_produto():
+    dados = validate(ProdutoSchema(), request.get_json())
+    produto = produto_service.criar(dados)             # regra de negócio no service
+    return jsonify({"dados": produto.to_dict()}), 201
+
+# service — duplicidade/estoque são regra de negócio, não de schema
+def criar(self, dados):
+    if self.produto_repo.find_by_nome(dados["nome"]):
+        raise ConflictError("produto duplicado")
+    return self.produto_repo.create(dados)
+```
+
+#### Padrão 6 — Hash de senhas
+
+**Antes:**
+```python
+def criar_usuario():
+    dados = request.get_json()
+    db.execute("INSERT INTO usuarios (nome, senha) VALUES (?, ?)",
+               (dados["nome"], dados["senha"]))          # texto puro
+    return jsonify({"senha": dados["senha"]}), 201       # senha na resposta
+
+def login():
+    usuario = buscar_por_email(request.get_json()["email"])
+    if usuario and usuario["senha"] == request.get_json()["senha"]:
+        return jsonify({"token": gerar_token(usuario)})  # comparação direta
+```
+
+**Depois:**
+```python
+def criar_usuario():
+    dados = validate(UsuarioCreateSchema(), request.get_json())
+    usuario = usuario_repo.create(
+        nome=dados["nome"],
+        senha_hash=generate_password_hash(dados["senha"]),  # salt + custo
+    )
+    return jsonify({"dados": usuario.to_public_dict()}), 201  # sem senha
+
+def login():
+    dados = validate(LoginSchema(), request.get_json())
+    usuario = usuario_repo.find_by_email(dados["email"])
+    if not usuario or not check_password_hash(usuario.senha_hash, dados["senha"]):
+        raise UnauthorizedError("credenciais inválidas")
+    return jsonify({"token": gerar_token(usuario)})
+```
+
+Seed e legado também precisam estar hasheados:
+```python
+# seed — grava somente hash, nunca o literal
+usuario_repo.create(email="admin@loja.com",
+                    senha_hash=generate_password_hash("admin123"))
+
+# migração de legado no boot — converte qualquer senha sem prefixo de hash
+for usuario in usuario_repo.listar_todos():
+    if not looks_hashed(usuario.senha):
+        usuario_repo.update_senha(
+            usuario.id, generate_password_hash(usuario.senha)
+        )
+```
+
+**Regra:** a correção só é válida se **não restar senha em texto puro no banco, inclusive no seed**. Login usa apenas `check_password_hash`/equivalente, sem fallback de comparação direta; o campo de senha nunca é serializado.
+
+#### Padrão 7 — N+1 → query única
+
+**Antes:**
+```python
+pedidos = db.execute("SELECT * FROM pedidos").fetchall()
+for pedido in pedidos:
+    pedido["itens"] = db.execute(
+        "SELECT * FROM itens WHERE pedido_id = ?", (pedido["id"],)
+    ).fetchall()                                          # N+1
+```
+
+**Depois:**
+```python
+rows = db.execute("""
+    SELECT p.*, i.produto_id, i.quantidade, pr.nome AS produto_nome
+    FROM pedidos p
+    LEFT JOIN itens_pedido i ON i.pedido_id = p.id
+    LEFT JOIN produtos pr ON pr.id = i.produto_id
+    ORDER BY p.id
+""").fetchall()
+pedidos = agrupar_por_pedido(rows)                        # 1 query
+```
+
+#### Padrão 8 — Rotas separadas do entrypoint
+
+**Antes:**
+```python
+app = Flask(__name__)
+app.config["SECRET_KEY"] = "chave-literal"
+db = conectar("loja.db")
+
+@app.get("/produtos")
+def listar_produtos():
+    return jsonify(db.execute("SELECT * FROM produtos").fetchall())
+
+@app.post("/produtos")
+def criar_produto():
+    ...                                                   # boot, config e handler juntos
+
+app.run(debug=True)
+```
+
+**Depois:**
+```python
+# routes/produto_routes.py — só rotas; importa controller
+produto_bp = Blueprint("produtos", __name__, url_prefix="/produtos")
+produto_bp.add_url_rule("", view_func=produto_controller.listar, methods=["GET"])
+produto_bp.add_url_rule("", view_func=produto_controller.criar, methods=["POST"])
+
+# app.py — apenas composição
+def create_app(config):
+    app = Flask(__name__)
+    app.config.from_object(config)
+    app.register_blueprint(produto_bp)
+    app.register_blueprint(usuario_bp)
+    app.register_error_handler(Exception, internal_error)
+    return app
+```
+
+Regra: o módulo de rotas importa controllers, nunca services ou repositories diretamente.
+
+#### Padrão 9 — Autenticação e autorização (default deny)
+
+**Quando:** rotas de escrita, rotas administrativas, dados de outro usuário ou campos de papel/posse vindos do cliente.
+
+**Antes:**
+```python
+@app.post("/usuarios")
+def criar_usuario():
+    dados = request.get_json()               # qualquer anônimo
+    papel = dados.get("role", "user")         # cliente escolhe o próprio privilégio
+    return jsonify(usuario_service.criar(dados, papel)), 201
+
+@app.post("/pedidos")
+def criar_pedido():
+    dados = request.get_json()
+    dono = dados["usuario_id"]                # cliente escolhe em nome de quem cria
+    return jsonify(pedido_service.criar(dados, dono)), 201
+
+@app.delete("/usuarios/<int:user_id>")
+def excluir_usuario(user_id):
+    usuario_service.excluir(user_id)          # qualquer anônimo exclui
+    return "", 204
+```
+
+**Depois:**
+```python
+# middleware/auth.py — guard central: privado por padrão; público é exceção
+def require_auth(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        token = extrair_bearer(request)
+        if not token:
+            raise UnauthorizedError("credencial ausente")
+        payload = verificar_token(token)      # assinatura, expiração, emissor
+        g.user_id = payload["sub"]
+        g.user_role = payload["role"]
+        return fn(*args, **kwargs)
+    return wrapper
+
+def require_role(papel):
+    def decorator(fn):
+        @wraps(fn)
+        @require_auth
+        def wrapper(*args, **kwargs):
+            if g.user_role != papel:
+                raise ForbiddenError("perfil sem permissão")
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
+
+# gestão de usuários — somente admin (401 sem token; 403 sem papel)
+@usuarios_bp.post("")
+@require_role("admin")
+def criar_usuario():
+    dados = validate(UsuarioCreateSchema(), request.get_json())
+    return jsonify(usuario_service.criar(dados)), 201
+
+# recurso de domínio — dono vem do token, nunca do body
+@pedidos_bp.post("")
+@require_auth
+def criar_pedido():
+    dados = validate(PedidoCreateSchema(), request.get_json())
+    if "usuario_id" in dados and dados["usuario_id"] != g.user_id:
+        raise ForbiddenError("não é permitido criar em nome de terceiro")
+    return jsonify(pedido_service.criar(dados, g.user_id)), 201
+
+# rotas públicas são exceções explícitas e mínimas
+@auth_bp.post("/login")
+def login():
+    ...
+```
+
+Tradução do conceito por stack:
+
+| Stack | Guard central | Papel/role | Identidade do token |
+|---|---|---|---|
+| Flask | `before_request` + decorator | `@require_role` | `g.user_id`, `g.user_role` |
+| Django | middleware / `LoginRequiredMixin` | `PermissionRequiredMixin` | `request.user` |
+| Express | middleware `(req, res, next)` | `requireRole("admin")` | `req.user` |
+| Spring | `SecurityFilterChain` | `@PreAuthorize` | `Authentication` |
+| Rails | `before_action :authenticate` | `before_action` + Pundit | `current_user` |
+| Laravel | middleware `auth` | `can:` / `Gate` | `auth()->user()` |
+| Go | middleware `http.Handler` | checagem de papel no middleware | `context.Context` |
+| ASP.NET | `[Authorize]` | `[Authorize(Roles="admin")]` | `HttpContext.User` |
+
+**Regras:**
+- **Default deny:** sem credencial → `401`; credencial sem o papel exigido → `403`.
+- Gestão de usuários (listagem administrativa, criação, edição e exclusão) exige papel `admin`.
+- Recursos de domínio exigem o dono ou `admin`; identidade, papel e posse vêm do token, nunca de `role`/`tipo`/`usuario_id`/`owner_id` do body.
+- Rotas públicas são exceções explícitas e mínimas (ex.: login e health check).
+- Verificar assinatura, expiração e emissor do token; não confiar apenas na presença dele.
+- **A ausência de autenticação não pode ser o default:** a aplicação falha fechada. Nenhuma correção pode depender de flag opt-in (`AUTH_REQUIRED=true` ou similares).
+- Testar sempre com a configuração padrão: `401` sem credencial, `403` sem papel, caminho autorizado `200/201`, body divergente ignorado/rejeitado.
+
+### Segurança por padrão e gate da Fase 4
+
+- **Default seguro, sem auth opt-in.** O guard de autenticação é aplicado por padrão; não existe flag que mantenha a aplicação insegura. Se a configuração de autenticação não estiver disponível, a aplicação falha fechada (`401`/`503`) em vez de liberar acesso. Rotas públicas são allowlist explícita.
+- **Identidade derivada do token.** `role`, `tipo`, `usuario_id` e `owner_id` enviados pelo cliente nunca são aceitos como verdade. Gestão de usuários exige `admin`; recursos de domínio exigem dono ou `admin`.
+- **Gate bloqueante da Fase 4.** Qualquer achado CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO` reprova o fluxo:
+
+```text
+se algum CRITICAL/HIGH estiver PARCIAL ou NÃO RESOLVIDO:
+    status            = FAIL
+    recomendação      = REPROVADO - AÇÃO NECESSÁRIA
+    fluxo_concluído   = False
+senão se houver apenas MEDIUM/LOW pendente:
+    status            = PASS
+    recomendação      = APROVADO COM RESSALVAS
+senão:
+    status            = PASS / VALIDATED
+    recomendação      = APROVADO
+```
+
+- `VALIDATED` exige `Partial critical/high: 0`; `APROVADO COM RESSALVAS` é restrito a MEDIUM/LOW.
+- A validação roda com o **default** do projeto/`.env.example`, sem flags especiais. Para SEC-04, o `401` deve ocorrer no boot padrão; para SEC-03, a ausência de texto puro é verificada no banco/seed, não apenas na resposta HTTP.
 
 ### Agnosticismo de tecnologia
 
@@ -114,7 +516,7 @@ claude "/refactor-arch-validate"   # Fase 4 — Validação pós-refatoração
 
 #### Reexecutando o fluxo completo
 
-Os três projetos já possuem relatórios em `reports/` (`analysis-*`, `audit-*`, `refactor-*` e `validation-*`). Como o orquestrador usa esses arquivos para decidir o estado do fluxo, ao encontrar um `validation-*.md` ele considerará o processo concluído. Para executar todas as fases novamente do zero, mova os relatórios existentes antes de rodar a skill:
+Os três projetos já possuem relatórios em `reports/` (`analysis-*`, `audit-*`, `refactor-*` e `validation-*`). Como o orquestrador usa esses arquivos para decidir o estado do fluxo, ele só considerará o processo concluído se o `validation-*.md` indicar `PASS`/`VALIDATED`, recomendação `APROVADO` e `Partial critical/high: 0`. Para executar todas as fases novamente do zero, mova os relatórios existentes antes de rodar a skill:
 
 ```bash
 # A partir do diretório do projeto (ex.: code-smells-project)
@@ -313,6 +715,8 @@ mba-ia-refactor-projects-skill/
 
 ## Análise Manual
 
+> Esta seção registra a triagem manual inicial, anterior à execução da skill. A fonte de verdade para severidade e fechamento é o `reports/audit-*.md` de cada projeto; os números consolidados após a refatoração estão na seção **Resultados da reexecução (2026-11-05)**.
+
 ### code-smells-project (Python/Flask — API de E-commerce)
 
 ** Problemas Identificados:**
@@ -359,6 +763,18 @@ mba-ia-refactor-projects-skill/
 - **ecommerce-api-legacy:** Credenciais hardcoded (SEC-02), criptografia fraca/hash inseguro (SEC-03)
 - **task-manager-api:** `SECRET_KEY` hardcoded (SEC-02), credenciais SMTP hardcoded (SEC-02), MD5 sem salt + hash exposto em respostas (SEC-03)
 
+### Resultados da reexecução (2026-11-05)
+
+Números extraídos dos `reports/validation-*.md` dos três projetos após as correções do feedback:
+
+| Projeto | Rotas validadas | Testes | CRITICAL resolvidos | HIGH resolvidos | Partial critical/high | Evidência de segurança | Recomendação | Relatório |
+|---|---|---|---|---|---|---|---|---|
+| **code-smells-project** | **19/19** | **73/73** (`tests/smoke_contract.py`) | **3/3** | **4/4** | **0** | SEC-01/02/03/04 `RESOLVIDO`; admin em rotas de escrita; seed e banco em repouso com hash scrypt; login só com `check_password_hash` | **APROVADO** | [`validation-code-smells-project.md`](code-smells-project/reports/validation-code-smells-project.md) |
+| **ecommerce-api-legacy** | **3/3** | **16/16** (`npm test`) | **2/2** | **4/4** | **0** | SEC-02/03/04/06 `RESOLVIDO`; Bearer admin com fail-closed; checkout exige senha do titular; scrypt em repouso; logs sem PAN/chave/senha | **APROVADO** | [`validation-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md) |
+| **task-manager-api** | **22/22** | **8/8** (`pytest`) | **3/3** | **3/3** | **0** | SEC-02/03/04 `RESOLVIDO`; JWT default deny sem opt-in; `admin` na gestão de usuários; seed scrypt; posse derivada do token | **APROVADO** | [`validation-task-manager-api.md`](task-manager-api/reports/validation-task-manager-api.md) |
+
+**Gate aplicado:** `Critical resolved` integral, `High resolved` integral e `Partial critical/high: 0` em todos os projetos. Nenhum CRITICAL/HIGH ficou `PARCIAL` ou `NÃO RESOLVIDO`; a única ressalva de `code-smells-project` é MEDIUM/LOW (PERF-01 e QUAL-06) e não bloqueia o gate.
+
 
 ### Comparação antes/depois da estrutura de cada projeto
 
@@ -387,7 +803,7 @@ code-smells-project/
 ├── models/produto.py         entidades/invariantes
 ├── database/                 connection.py (por request) + schema.py (DDL/seed)
 ├── middleware/               error_handler.py + auth.py
-├── tests/smoke_contract.py   smoke test (68 checks)
+├── tests/smoke_contract.py   smoke test (73 checks)
 └── .env.example
 ```
 
@@ -398,19 +814,19 @@ code-smells-project/
 | Maior arquivo | 314 (`models.py`) | 139 (`pedido_repository.py`) |
 | Camadas | 0 (flat) | 8 (routes, controllers, schemas, services, repositories, models, database, middleware) |
 | Queries parametrizadas | Não | Sim (100%) |
-| Testes | 0 | 68 checks |
+| Testes | 0 | 73 checks |
 
 #### 2) ecommerce-api-legacy (Node.js/Express)
 **Antes:** Estrutura monolítica centrada em `src/AppManager.js` com toda lógica HTTP, regras de negócio, acesso a dados e configuração hardcoded em um único local. Configurações sensíveis em `src/utils.js`. Criptografia insegura em `src/utils.js`.
 
-**Depois:** Reestruturado para padrão MVC com separação em camadas (conforme execução da skill `refactor-arch` neste projeto). Configurações movidas para ambiente/`config/`, lógica extraída para services/controllers/repositories conforme aplicável. Credenciais removidas de código-fonte, uso de hashing adequado proposto/implementado conforme refatoração, rotas administrativas protegidas.
+**Depois:** Reestruturado para padrão MVC + Services + Repositories (36 arquivos JS + 1 SQL, ~867 LOC). Configurações movidas para ambiente/`config/`, lógica extraída para services/controllers/repositories, segredos removidos do código, hash de senha com `scrypt` + salt, rotas administrativas e destrutivas com Bearer admin fail-closed e checkout exigindo a senha do titular. Resultado validado: **16/16 testes**, **14/14 cenários HTTP**, **2/2 CRITICAL** e **4/4 HIGH** resolvidos, `Partial critical/high: 0`.
 
-*(Detalhes completos em [`ecommerce-api-legacy/reports/refactor-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/refactor-ecommerce-api-legacy.md) e [`ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md) quando disponíveis.)*
+*(Detalhes completos em [`ecommerce-api-legacy/reports/refactor-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/refactor-ecommerce-api-legacy.md) e [`ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md).)*
 
 #### 3) task-manager-api (Python/Flask)
 **Antes:** Já possuía alguma organização (`models/`, `routes/`, `services/`, `utils/`, `controllers/`, `migrations/`) mas com problemas críticos: `SECRET_KEY` hardcoded em `app.py`, senhas com MD5 sem salt e hash exposto via `to_dict()`, rotas sem autenticação/autorização, token fake previsível, N+1, validação insuficiente, `datetime.utcnow()`/`Query.get()` deprecated, ausência de testes.
 
-**Depois:** Reestruturado/aprimorado pela skill para alinhar melhor ao MVC, com melhorias de segurança (hash adequado, remoção de dados sensíveis das respostas, proteção de rotas), extração de regras para services, tratamento de erros, configuração via ambiente e demais correções identificadas na auditoria. A API permanece funcional com todos os endpoints respondendo.
+**Depois:** Reestruturado/aprimorado pela skill para alinhar ao MVC, com hash seguro (`generate_password_hash`/`check_password_hash`), remoção de dados sensíveis das respostas, autenticação JWT default deny, autorização `admin` na gestão de usuários, posse derivada do token, extração de regras para services, tratamento de erros centralizado, configuração via ambiente e demais correções da auditoria. Resultado validado: **22/22 rotas**, **8/8 testes**, **3/3 CRITICAL** e **3/3 HIGH** resolvidos, `Partial critical/high: 0`.
 
 *(Detalhes completos em [`task-manager-api/reports/refactor-task-manager-api.md`](task-manager-api/reports/refactor-task-manager-api.md) e [`task-manager-api/reports/validation-task-manager-api.md`](task-manager-api/reports/validation-task-manager-api.md).)*
 
@@ -443,8 +859,13 @@ code-smells-project/
 - [x] Aplicação inicia sem erros
 - [x] Endpoints originais continuam respondendo (19/19 rotas validadas)
 - [x] Autorização por nível nas rotas de escrita (SEC-04): produtos → `admin`; pedidos → `cliente` (próprio usuário); status → `admin`
+- [x] Autorização administrativa: gestão de produtos e status de pedido exigem `admin`; `401` sem token e `403` sem papel
+- [x] Rotas de escrita exigem autenticação por padrão; identidade e posse vêm do token, nunca do body
+- [x] SEC-03 sem texto puro no seed/banco: seed grava hash scrypt; banco em repouso sem senha legível; login só com `check_password_hash`
+- [x] Migração de senhas legadas executada no boot, antes de qualquer autenticação
+- [x] Nenhum CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO` no `validation-code-smells-project.md`
 
-**Validação pós-refatoração:** `tests/smoke_contract.py` - 68/68 checks passando. Boot real OK. CRITICAL/HIGH todos resolvidos.
+**Validação pós-refatoração:** `tests/smoke_contract.py` — **73/73 checks** passando. Boot real OK. Gate: `Critical resolved: 3/3`, `High resolved: 4/4`, `Partial critical/high: 0`; recomendação **APROVADO**. Relatório: [`validation-code-smells-project.md`](code-smells-project/reports/validation-code-smells-project.md).
 
 #### Checklist - ecommerce-api-legacy (Node.js/Express)
 **Fase 1 — Análise**
@@ -469,9 +890,14 @@ code-smells-project/
 - [x] Error handling adequado
 - [x] Entry point claro
 - [x] Aplicação inicia sem erros
-- [x] Endpoints originais continuam respondendo
+- [x] Endpoints originais continuam respondendo (3/3 rotas de contrato + caminhos de erro)
+- [x] Autorização administrativa: `GET /api/admin/financial-report` e `DELETE /api/users/:id` exigem Bearer admin; sem `ADMIN_TOKEN` falham fechado (`503`)
+- [x] Checkout de conta existente exige a senha do titular; identidade/dono não vêm do body
+- [x] SEC-02: credenciais somente via ambiente (sem literais); SEC-03: hash scrypt com salt e banco em repouso sem texto puro
+- [x] Logs sem PAN completo, chave de pagamento ou senha (apenas `cardLast4`)
+- [x] Nenhum CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO` no `validation-ecommerce-api-legacy.md`
 
-**Validação:** Relatórios em `ecommerce-api-legacy/reports/` (audit, analysis, refactor, validation).
+**Validação:** `npm test` — **16/16**; smoke HTTP **14/14**; gate `Critical resolved: 2/2`, `High resolved: 4/4`, `Partial critical/high: 0`; recomendação **APROVADO**. Relatório: [`validation-ecommerce-api-legacy.md`](ecommerce-api-legacy/reports/validation-ecommerce-api-legacy.md).
 
 #### Checklist - task-manager-api (Python/Flask)
 **Fase 1 — Análise**
@@ -497,9 +923,13 @@ code-smells-project/
 - [x] Error handling centralizado
 - [x] Entry point claro
 - [x] Aplicação inicia sem erros
-- [x] Endpoints originais continuam respondendo
+- [x] Endpoints originais continuam respondendo (22/22 rotas de negócio)
+- [x] Autorização administrativa: `GET/POST/PUT/DELETE /users` exigem `admin`; `401` sem token e `403` sem papel
+- [x] Auth default deny sem opt-in (`AUTH_REQUIRED` ausente → `True`); posse de tarefa derivada do JWT
+- [x] SEC-03 sem texto puro no seed/banco: seed grava `scrypt:`; `password` removido das respostas; login sem fallback
+- [x] Nenhum CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO` no `validation-task-manager-api.md`
 
-**Validação:** Relatórios em `task-manager-api/reports/` (audit, analysis, refactor, validation).
+**Validação:** `pytest` — **8/8**; smoke **22/22**; gate `Critical resolved: 3/3`, `High resolved: 3/3`, `Partial critical/high: 0`; recomendação **APROVADO**. Relatório: [`validation-task-manager-api.md`](task-manager-api/reports/validation-task-manager-api.md).
 
 
 ### Screenshots ou logs mostrando as aplicações rodando após refatoração
@@ -511,7 +941,7 @@ Os projetos foram refatorados pela skill nos seus respectivos diretórios com c�
 - **Adaptação ao nível de organização:** Em **code-smells-project** (monolito completamente desestruturado, 4 arquivos), a skill fez uma reorganização radical para MVC com criação de múltiplas camadas (routes, controllers, services, repositories, schemas, middleware, database). Em **task-manager-api** (já parcialmente organizado com models/routes/services), a skill identificou problemas mesmo com estrutura existente e propôs melhorias incrementais sem quebrar a aplicação. Em **ecommerce-api-legacy** (Node.js/Express monolítico), adaptou-se à stack diferente mantendo o mesmo processo de análise/auditoria/refatoração.
 - **Detecção abrangente:** Encontrou tanto problemas arquiteturais (God Class/Files, lógica no controller, SQL fora de repositório) quanto de segurança (SQL Injection, credenciais hardcoded, senhas fracas/expostas, falta de auth) e performance (N+1). Também detectou **APIs deprecated** (`datetime.utcnow()`, `Query.get()` no task-manager-api).
 - **Segurança proativa:** Em code-smells-project, removeu `POST /admin/query` (executor SQL arbitrário), protegeu `POST /admin/reset-db` com token estático, passou o `/login` a emitir token de sessão e aplicou autorização por nível nas rotas de escrita (produtos → `admin`; cadastro de pedido → `cliente`, apenas em nome próprio), além de neutralizar SQL Injection com queries parametrizadas e remover exposição de segredos/senhas.
-- **Validação rigorosa:** A Fase 2 pausou solicitando confirmação antes da refatoração. A Fase 3 validou (boot + smoke tests). O projeto 1 teve validação automatizada com 68 checks passando, incluindo os cenários de autorização `401`/`403`.
+- **Validação rigorosa:** A Fase 2 pausou solicitando confirmação antes da refatoração. A Fase 3 validou (boot + smoke tests). O projeto 1 teve validação automatizada com **73 checks** passando, incluindo os cenários de autorização `401`/`403`; a Fase 4 aplicou o gate bloqueante e reprovaria qualquer CRITICAL/HIGH `PARCIAL` ou `NÃO RESOLVIDO`.
 - **Qualidade dos relatórios:** Relatórios seguem template padronizado com achados por severidade, arquivo/linha exatos, evidências, impacto e recomendação - facilitando rastreabilidade.
 - **Desafios observados:** Projetos com estrutura parcial exigem maior sutileza para não sobrescrever organização existente de forma destrutiva; stacks diferentes requerem heurísticas de detecção adequadas (linguagem/framework). Ajustes nos arquivos de referência foram necessários para garantir cobertura mínima (>=5 findings, incluindo CRITICAL/HIGH) em todos os 3 projetos.
 - **Resultado geral:** Todos os critérios obrigatórios foram atendidos nos 3 projetos - stack detectada corretamente, >=5 findings com pelo menos 1 CRITICAL/HIGH, aplicação funcional após refatoração.

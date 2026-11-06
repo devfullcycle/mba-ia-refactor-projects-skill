@@ -14,7 +14,8 @@ Diferenças deliberadas já documentadas em `reports/refactor-code-smells-projec
     com nível insuficiente). Cliente só cria pedido para si mesmo.
   * `GET /health` não devolve mais `secret_key`, `db_path`, `debug`.
   * `GET /usuarios` não devolve mais o campo `senha`.
-  * Senhas passam a ser hash com salt (login continua aceitando o seed legado).
+  * Senhas passam a ser hash com salt no seed e no cadastro; registros legados
+    em texto puro são re-hasheados no boot; o login nunca compara texto puro.
   * `POST /produtos/busca` com injeção NÃO vaza mais a tabela (parametrizado).
   * Payload malformado → 400 (antes podia virar 500).
 
@@ -190,22 +191,40 @@ def run_checks(client):
     r = client.post("/usuarios", json={"nome": "Sem Email"})
     check("POST /usuarios sem email/senha → 400", r.status_code == 400, f"status={r.status_code}")
 
-    # senha armazenada como hash
+    # --- SEC-03: senhas em repouso ------------------------------------------
     import database as db_pkg
-    from flask import g
+    from database import schema as schema_module
+
     with app_module.app.app_context():
         conn = db_pkg.get_db()
         row = conn.execute("SELECT senha FROM usuarios WHERE email = ?", ("novo@email.com",)).fetchone()
         check(
             "Senha persistida como hash com salt (SEC-03)",
-            row is not None and row["senha"] != "segredo123" and ":" in row["senha"],
+            row is not None and row["senha"].startswith(("scrypt:", "pbkdf2:", "argon2")),
             f"prefixo={row['senha'][:14] if row else None}",
+        )
+
+        seed_rows = conn.execute(
+            "SELECT email, senha FROM usuarios WHERE email IN (?, ?, ?)",
+            ("admin@loja.com", "joao@email.com", "maria@email.com"),
+        ).fetchall()
+        seed_hashes = {seed_row["email"]: seed_row["senha"] for seed_row in seed_rows}
+        check(
+            "Seed persistido com hash e salt (SEC-03)",
+            len(seed_hashes) == 3
+            and all(valor.startswith(("scrypt:", "pbkdf2:", "argon2")) for valor in seed_hashes.values()),
+            f"prefixos={[valor[:8] for valor in seed_hashes.values()]}",
+        )
+        check(
+            "Nenhuma senha do seed em texto puro (SEC-03)",
+            all(valor not in {"admin123", "123456", "senha123"} for valor in seed_hashes.values()),
+            "valores conferidos no banco",
         )
 
     # --- login --------------------------------------------------------------
     r = client.post("/login", json={"email": "admin@loja.com", "senha": "admin123"})
     body = r.get_json()
-    check("POST /login válido (seed legado) → 200", r.status_code == 200 and body.get("sucesso") is True, f"status={r.status_code} body={body}")
+    check("POST /login válido (seed com hash) → 200", r.status_code == 200 and body.get("sucesso") is True, f"status={r.status_code} body={body}")
     check(
         "POST /login devolve token de sessão e NÃO devolve campo senha",
         isinstance(body.get("token"), str) and bool(body["token"]) and "senha" not in body.get("dados", {}),
@@ -213,6 +232,55 @@ def run_checks(client):
     )
     r = client.post("/login", json={"email": "novo@email.com", "senha": "segredo123"})
     check("POST /login usuário novo (hash) → 200", r.status_code == 200, f"status={r.status_code}")
+
+    # --- SEC-03: migração de legado e ausência de comparação em texto puro --
+    with app_module.app.app_context():
+        conn = db_pkg.get_db()
+        conn.execute(
+            "INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)",
+            ("Legado", "legado@email.com", "legado123", "cliente"),
+        )
+        conn.commit()
+        migradas = schema_module.migrate_legacy_passwords(conn)
+        legado = conn.execute(
+            "SELECT senha FROM usuarios WHERE email = ?", ("legado@email.com",)
+        ).fetchone()
+        check(
+            "Migração de senha legada gera hash (SEC-03)",
+            migradas >= 1
+            and legado["senha"].startswith(("scrypt:", "pbkdf2:", "argon2"))
+            and legado["senha"] != "legado123",
+            f"migradas={migradas} prefixo={legado['senha'][:8]}",
+        )
+
+    r = client.post("/login", json={"email": "legado@email.com", "senha": "legado123"})
+    check("POST /login do usuário legado migrado → 200 (SEC-03)", r.status_code == 200, f"status={r.status_code}")
+
+    from errors import NaoAutorizadoError
+    from services import usuario_service
+
+    original = usuario_service.usuario_repository.buscar_por_email
+    usuario_service.usuario_repository.buscar_por_email = lambda email: {
+        "id": 999,
+        "nome": "Fake",
+        "email": email,
+        "senha": "texto123",
+        "tipo": "cliente",
+    }
+    try:
+        try:
+            usuario_service.autenticar("fake@email.com", "texto123")
+            aceitou_texto_puro = True
+        except NaoAutorizadoError:
+            aceitou_texto_puro = False
+    finally:
+        usuario_service.usuario_repository.buscar_por_email = original
+
+    check(
+        "Autenticação rejeita senha em texto puro (SEC-03)",
+        not aceitou_texto_puro,
+        "comparação em texto puro não existe",
+    )
 
     r = client.post("/login", json={"email": "admin@loja.com", "senha": "errada"})
     check("POST /login senha errada → 401", r.status_code == 401, f"status={r.status_code}")

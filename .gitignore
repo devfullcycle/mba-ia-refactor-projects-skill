@@ -10,3 +10,4 @@ venv/
 # SQLite
 *.db
 instance/
+reports.bak-*

@@ -1,7 +1,7 @@
 # Refactor Report — ecommerce-api-legacy
 
 > Gerado pela skill `refactor-arch` (Fase 3 — Refatoração).
-> Data: 2026-10-22 | Atualizado: 2026-10-31 (reauditoria SEC-04 — regra expandida)
+> Data: 2026-11-05 | Atualizado: 2026-11-05 (Etapa 7 — revalidação SEC-02/03/04/06)
 > Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
 > Baseado em: `reports/analysis-ecommerce-api-legacy.md` e `reports/audit-ecommerce-api-legacy.md`
 
@@ -21,6 +21,7 @@
 | Anti-patterns corrigidos | — | 13/13 (2 CRITICAL, 4 HIGH, 4 MEDIUM, 3 LOW) |
 | Endpoints validados | — | 3/3 rotas de contrato + caminhos de erro |
 | Reauditoria SEC-04 (2026-10-31) | — | 1 gap adicional (checkout IDOR) corrigido |
+| Revalidação Etapa 7 (2026-11-05) | — | `npm test` 16/16; DB em repouso scrypt; logs sem PAN/chave/senha |
 
 **Resultado:** refatoração concluída. A aplicação sobe com `npm start`, os 16 testes passam e o smoke test exercitou todas as rotas inventariadas na Fase 1, incluindo os caminhos de 400, 401, 404 e 503.
 
@@ -204,3 +205,19 @@ A regra SEC-04 foi ampliada para cobrir rotas de cadastro/criação que aceitam 
 - Smoke test: `401 Credenciais inválidas` nos dois casos negativos; `200` com a senha correta; admin segue `401` sem token e `200` com token.
 
 **Risco residual:** cadastro público sem verificação de e-mail permite pré-registro de e-mail de terceiros (account pre-hijacking). Não permite assumir uma conta já existente, mas deve ser endereçado com confirmação de e-mail em produção.
+
+## 7. Adendo — revalidação da Etapa 7 (2026-11-05)
+
+Revalidação dos achados de segurança exigidos pelo gate, sem alteração de código:
+
+| Item | Verificação | Evidência |
+|---|---|---|
+| **SEC-02** Credenciais | Nenhum literal de senha/chave/token em `src`, `.env.example`, `.env` ou README; segredos só via ambiente; produção falha no boot sem `ADMIN_TOKEN` | `grep` sem ocorrências de `admin_master`/`pk_live_*`/`senha_super_secreta*`; `NODE_ENV=production node src/app.js` → `Error: Missing required environment variable: ADMIN_TOKEN`, exit 1 |
+| **SEC-03** Hash | `scrypt` com salt aleatório de 16 bytes, chave de 64 bytes e `timingSafeEqual`; seed aleatório gravado apenas como hash | Banco em repouso: `leonan@fullcycle.com.br` → `scrypt$...` (168 chars); testes `password.test.js` validam salt e verificação |
+| **SEC-04** Auth/IDOR | Rotas admin/destrutivas com Bearer token; fail-closed sem `ADMIN_TOKEN`; checkout de conta existente exige senha do titular | `401` sem token/token inválido; `503` sem `ADMIN_TOKEN`; checkout existente sem senha/errada → `401`, correta → `200`; ID/role nunca vêm do body |
+| **SEC-06** Logs | Sem PAN completo, chave do gateway ou senha | Log capturado com `LOG_LEVEL=debug` não contém `4111222233334444`, `etapa7-gateway-key` nem a senha; contém apenas `cardLast4` |
+
+**Testes:** `npm test` → **16/16 passando**.
+**Smoke HTTP:** 14 cenários exercitados — checkout novo/existente, recusa de cartão, payload inválido, curso inexistente, relatório admin, DELETE autorizado/negado e id inválido — todos com o status esperado.
+**Fail-closed:** processo sem `ADMIN_TOKEN` → relatório `503`; checkout público continua `200`.
+**Conclusão:** SEC-02, SEC-03, SEC-04 e SEC-06 permanecem **RESOLVIDOS** com o novo gate.

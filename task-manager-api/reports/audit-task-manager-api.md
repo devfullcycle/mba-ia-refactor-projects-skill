@@ -1,7 +1,7 @@
 # Audit Report — task-manager-api
 
 > Gerado pela skill `refactor-arch` (Fase 2 — Auditoria).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/task-manager-api`
+> Data: 2026-10-22 | Reexecução: 2026-11-05 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/task-manager-api`
 > Baseado na análise de: `reports/analysis-task-manager-api.md`
 
 ## 1. Resumo
@@ -32,6 +32,8 @@ app.config['SECRET_KEY'] = 'super-secret-key-123'
 ```
 
 **Impacto:** A chave de assinatura da aplicação está no código-fonte. Qualquer pessoa com acesso ao repositório pode forjar sessões/tokens e comprometer a confidencialidade dos dados. Como `python-dotenv` já está declarado em `requirements.txt`, a infraestrutura para externalizar config existe, mas não é usada.
+
+**Critério de fechamento (CRITICAL/HIGH):** `grep` sem o literal `super-secret-key-123` no código de produção; boot com a configuração padrão (sem `SECRET_KEY` no ambiente) sobe sem erro e usa chave gerada em runtime.
 
 **Recomendação:**
 ```python
@@ -68,6 +70,8 @@ def __init__(self):
 
 **Impacto:** Credenciais de conta de e-mail em texto puro no repositório. Além do vazamento, a classe nunca é instanciada (código morto), o que também indica que a funcionalidade de notificação está inoperante.
 
+**Critério de fechamento (CRITICAL/HIGH):** módulo/credenciais removidos e `grep` por `smtp.gmail.com`/`senha123` sem ocorrências no código de produção.
+
 **Recomendação:** Ler host/porta/usuário/senha de variáveis de ambiente (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`) e remover o módulo se a funcionalidade não fizer parte do escopo.
 
 **Referência:** `references/anti-patterns.md` → SEC-02
@@ -98,6 +102,8 @@ def to_dict(self):
 ```
 
 **Impacto:** MD5 sem salt é quebrável por rainbow tables/GPU em segundos. Pior: `to_dict()` inclui o hash da senha, e ele é retornado em `POST /users` (`routes/user_routes.py:85`), `PUT /users/<id>` (`:129`) e no `POST /login` (`:209`). O hash vaza para qualquer cliente da API.
+
+**Critério de fechamento (CRITICAL/HIGH):** inspeção do banco/seed com todo valor armazenado iniciando por prefixo de hash com salt (`scrypt:`/`pbkdf2:`); login funcional; ausência de fallback de comparação em texto puro; respostas de `/users` e `/login` sem `password`.
 
 **Recomendação:** Usar `werkzeug.security.generate_password_hash`/`check_password_hash` (já disponível via Flask) ou bcrypt/argon2, e remover `password` do dicionário público:
 ```python
@@ -140,6 +146,8 @@ return jsonify({
 
 **Impacto:** Qualquer cliente anônimo cria, altera e deleta tasks, usuários e categorias. O login não emite credencial verificável — o "token" é o id do usuário com prefixo fixo, trivialmente forjável e nunca validado pelas rotas. Combinado com a exposição do hash de senha (SEC-03), o modelo de autenticação é inexistente.
 
+**Critério de fechamento (CRITICAL/HIGH):** com a configuração padrão, `POST /tasks` e `POST /users` sem token retornam `401`; `POST /users`, `PUT/DELETE /users/<id>` e `GET /users` com token não-admin retornam `403`; com token `admin` retornam `201/200/200/200`; `/login` permanece público; identidade/papel/posse derivados do JWT, não do body.
+
 **Recomendação:** Emitir JWT real (ex.: `flask-jwt-extended`) e proteger as rotas de escrita com decorator `@jwt_required()`; restringir operações administrativas (ex.: criação/edição de usuários) a `role == 'admin'`. A Fase 3 deve ao menos implementar um guard central reutilizável, sem quebrar o contrato dos endpoints.
 
 **Referência:** `references/anti-patterns.md` → SEC-04
@@ -169,6 +177,8 @@ task.title = title
 
 **Impacto:** Validação, regras de estado, cálculo de atraso, agregações de relatório e montagem de resposta vivem nas funções de rota (algumas com 70+ linhas). A regra de negócio não pode ser testada sem subir HTTP e banco; `utils/helpers.py:57-108` já contém uma versão paralela dessa validação, que ficou órfã.
 
+**Critério de fechamento (CRITICAL/HIGH):** controllers apenas orquestram (`request → service → response`), sem regra de negócio; regras em `services/` e verificadas por testes de integração.
+
 **Recomendação:** Extrair casos de uso para `services/` (ex.: `TaskService.create_task`, `TaskService.update_task`, `ReportService.summary`) e deixar a rota apenas: ler request → chamar service → formatar resposta HTTP/erro.
 
 **Referência:** `references/anti-patterns.md` → ARCH-01
@@ -191,6 +201,8 @@ if t.category_id:
 ```
 
 **Impacto:** ORM e `db.session` são usados diretamente na camada de transporte. Não há repositório nem ponto único para trocar persistência, aplicar filtros de tenant ou testar com repositório fake. As mesmas consultas aparecem duplicadas em `task_routes`, `user_routes` e `report_routes`.
+
+**Critério de fechamento (CRITICAL/HIGH):** nenhum import/uso de `db`, models ou `.query` em `controllers/` e `routes/`; todo acesso a dados concentrado em `repositories/`.
 
 **Recomendação:** Introduzir repositórios (ex.: `repositories/task_repository.py`) ou, no mínimo, métodos de consulta nos Models; services dependem dos repositórios, rotas dependem dos services.
 

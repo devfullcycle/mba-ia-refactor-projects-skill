@@ -1,7 +1,8 @@
 # Análise de Codebase — code-smells-project
 
 > Gerado pela skill `refactor-arch` (Fase 1 — Análise).
-> Data: 2026-10-22 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project`
+> Data: 2026-11-05 | Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/code-smells-project`
+> Reexecução da Etapa 6: a análise abaixo descreve o codebase **original** (entrada da skill) e permanece válida como contrato de referência. O estado refatorado e as correções do feedback estão em `reports/refactor-code-smells-project.md` e `reports/validation-code-smells-project.md`.
 
 ## 1. Resumo
 

@@ -28,9 +28,10 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Autenticação: a infraestrutura JWT é aplicada quando AUTH_REQUIRED=true.
-    # O default false preserva o contrato original dos endpoints (projeto legado).
-    AUTH_REQUIRED = _as_bool(os.getenv('AUTH_REQUIRED'), default=False)
+    # Autenticação default deny: escrita exige JWT por padrão. O middleware é
+    # fail-closed e não usa esta flag para desativar a proteção; ela permanece
+    # apenas para documentar/consultar a configuração efetiva.
+    AUTH_REQUIRED = _as_bool(os.getenv('AUTH_REQUIRED'), default=True)
     JWT_EXPIRATION_SECONDS = int(os.getenv('JWT_EXPIRATION_SECONDS', '86400'))
 
     DEBUG = _as_bool(os.getenv('FLASK_DEBUG'), default=False)
@@ -42,4 +43,4 @@ class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
     SECRET_KEY = 'test-secret-key'
-    AUTH_REQUIRED = False
+    AUTH_REQUIRED = True

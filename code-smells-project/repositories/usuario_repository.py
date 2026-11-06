@@ -61,15 +61,6 @@ def criar(nome, email, senha, tipo="cliente"):
     return cursor.lastrowid
 
 
-def atualizar_senha(usuario_id, senha_hash):
-    """Usado no upgrade transparente de hash legado → hash com salt (SEC-03)."""
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute("UPDATE usuarios SET senha = ? WHERE id = ?", (senha_hash, usuario_id))
-    db.commit()
-    return cursor.rowcount > 0
-
-
 def contar():
     cursor = get_db().cursor()
     cursor.execute("SELECT COUNT(*) FROM usuarios")

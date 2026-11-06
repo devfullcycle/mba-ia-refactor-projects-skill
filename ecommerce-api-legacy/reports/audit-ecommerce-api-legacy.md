@@ -1,9 +1,10 @@
 # Audit Report — ecommerce-api-legacy
 
 > Gerado pela skill `refactor-arch` (Fase 2 — Auditoria).
-> Data: 2026-10-22 | Atualizado: 2026-10-31 (SEC-04 — regra expandida para rotas de cadastro/criação)
+> Data: 2026-11-05 | Atualizado: 2026-11-05 (Etapa 7 — revalidação com gate de CRITICAL/HIGH)
 > Raiz: `/home/eric-ogata/codes/full_cycle/mba_engenharia_ia/desafios/desafio3/mba-ia-refactor-projects-skill/ecommerce-api-legacy`
 > Baseado na análise de: `reports/analysis-ecommerce-api-legacy.md`
+> Reexecução da Etapa 7: os achados abaixo são os da auditoria original e servem de critério de aceite para a validação. Os critérios objetivos de fechamento de CRITICAL/HIGH foram adicionados na seção 2.1.
 
 ## 1. Resumo
 
@@ -498,6 +499,21 @@ Testar primeiro os contratos inventariados na Fase 1 antes de mover código.
 **Referência:** `references/anti-patterns.md` → QUAL-08
 
 ---
+
+### 2.1 Critérios objetivos de fechamento (CRITICAL/HIGH)
+
+Um achado só é considerado **RESOLVIDO** na Fase 4 quando todos os critérios
+abaixo são comprovados por código e por execução (`npm test` + HTTP real).
+Qualquer critério pendente bloqueia o gate da Etapa 7.
+
+| ID | Severidade | Critério de fechamento |
+|---|---|---|
+| **SEC-02** | CRITICAL | (a) nenhuma credencial literal no código ou `.env.example`; (b) `ADMIN_TOKEN` e `PAYMENT_GATEWAY_KEY` lidos exclusivamente de variáveis de ambiente; (c) em produção, ausência de segredo falha no boot; (d) nenhum segredo em resposta HTTP ou log. |
+| **SEC-03** | CRITICAL | (a) hash de senha com salt e custo adequado (scrypt/bcrypt/argon2), sem codificação reversível; (b) seed grava apenas hash — nenhuma senha em texto puro; (c) verificação em tempo constante; (d) `users.pass` no banco em repouso contém apenas hash. |
+| **SEC-04** | HIGH | (a) `GET /api/admin/financial-report` e `DELETE /api/users/:id` exigem `Bearer` de admin; (b) sem `ADMIN_TOKEN` as rotas falham fechado (`503`); (c) checkout de conta existente exige a senha do titular (`401` sem senha/senha errada) e nunca aceita id/dono/role do body; (d) novo usuário pode ser público, mas não cria matrícula em nome de terceiro. |
+| **SEC-06** | HIGH | (a) logs não contêm PAN completo, chave de pagamento nem senha; (b) no máximo metadados mascarados (`cardLast4`); (c) nenhuma linha de log expõe `paymentGatewayKey`. |
+| **ARCH-01** | HIGH | controllers apenas validam/orquestram/serializam; regra de negócio (pagamento, criação de usuário, agregação) está em services. |
+| **ARCH-02** | HIGH | nenhum SQL em controllers/rotas; acesso a dados concentrado em repositories. |
 
 ## 3. Mapa de calor por arquivo
 
