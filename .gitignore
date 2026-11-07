@@ -10,3 +10,6 @@ venv/
 # SQLite
 *.db
 instance/
+
+# IDE
+.idea/
