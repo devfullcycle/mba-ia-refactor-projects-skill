@@ -8,6 +8,7 @@ O ambiente contém a raiz do repositório com três subprojetos legados, além d
 
 ```text
 mba-ia-refactor-projects-skill/
+├── code-smells-project/                # Python / Flask 3.1.1 (API E-Commerce - SQL nativo / Alto acoplamento)
 ├── .claude/
 │   └── skills/
 │       └── refactor-arch/
@@ -17,9 +18,26 @@ mba-ia-refactor-projects-skill/
 │           ├── guideline_arquitetura_mvc.md # Blueprint da arquitetura MVC alvo
 │           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
 │           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
-├── code-smells-project/                # Python / Flask 3.1.1 (API E-Commerce - SQL nativo / Alto acoplamento)
 ├── ecommerce-api-legacy/               # Node.js / Express 4.18 (LMS API - God Class / BD em memória)
+├── .claude/
+│   └── skills/
+│       └── refactor-arch/
+│           ├── SKILL.md                     # Orquestração principal da skill (Fases 1, 2 e 3)
+│           ├── analise_heuristica.md        # Heurísticas de detecção e mapeamento inicial
+│           ├── catalogo_anti_patterns.md    # Catálogo de débitos técnicos e anti-patterns
+│           ├── guideline_arquitetura_mvc.md # Blueprint da arquitetura MVC alvo
+│           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
+│           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
 └── task-manager-api/                   # Python / Flask 3.0 / SQLAlchemy (Task Manager - Parcialmente organizado)
+├── .claude/
+│   └── skills/
+│       └── refactor-arch/
+│           ├── SKILL.md                     # Orquestração principal da skill (Fases 1, 2 e 3)
+│           ├── analise_heuristica.md        # Heurísticas de detecção e mapeamento inicial
+│           ├── catalogo_anti_patterns.md    # Catálogo de débitos técnicos e anti-patterns
+│           ├── guideline_arquitetura_mvc.md # Blueprint da arquitetura MVC alvo
+│           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
+│           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
 ```
 
 ---
@@ -117,6 +135,7 @@ Antes da construção do motor da *skill*, realizamos uma auditoria manual detal
 * **Depois:**
   ```text
   code-smells-project/
+  ├── .claude/skills/refactor-arch/
   ├── app.py                  # Ponto de entrada leve
   ├── src/
   │   ├── config/             # Configurações e conexões de BD
@@ -136,6 +155,7 @@ Antes da construção do motor da *skill*, realizamos uma auditoria manual detal
 * **Depois:**
   ```text
   ecommerce-api-legacy/
+  ├── .claude/skills/refactor-arch/
   ├── server.js               # Bootstrap do servidor HTTP
   ├── src/
   │   ├── models/             # Camada de abstração de dados (Data Layer)
@@ -157,6 +177,7 @@ Antes da construção do motor da *skill*, realizamos uma auditoria manual detal
 * **Depois:**
   ```text
   task-manager-api/
+  ├── .claude/skills/refactor-arch/
   ├── app.py                  # Inicializador limpo da aplicação
   ├── seed.py                 # Script de inicialização compatível
   └── src/
