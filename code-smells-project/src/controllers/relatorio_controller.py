@@ -1,11 +1,17 @@
 from src.models import pedido_model
 
+CASAS_DECIMAIS_MOEDA = 2
+
 # (faturamento mínimo exclusivo, percentual de desconto), da maior faixa para a menor.
 FAIXAS_DESCONTO = (
     (10000, 0.10),
     (5000, 0.05),
     (1000, 0.02),
 )
+
+
+def _moeda(valor):
+    return round(valor, CASAS_DECIMAIS_MOEDA)
 
 
 def calcular_desconto(faturamento):
@@ -17,17 +23,17 @@ def calcular_desconto(faturamento):
 
 def relatorio_vendas():
     resumo = pedido_model.resumo_vendas()
-    total_pedidos = resumo["total_pedidos"]
     faturamento = resumo["faturamento"]
+    pedidos_faturados = resumo["pedidos_faturados"]
     desconto = calcular_desconto(faturamento)
 
     return {
-        "total_pedidos": total_pedidos,
-        "faturamento_bruto": round(faturamento, 2),
-        "desconto_aplicavel": round(desconto, 2),
-        "faturamento_liquido": round(faturamento - desconto, 2),
+        "total_pedidos": resumo["total_pedidos"],
+        "faturamento_bruto": _moeda(faturamento),
+        "desconto_aplicavel": _moeda(desconto),
+        "faturamento_liquido": _moeda(faturamento - desconto),
         "pedidos_pendentes": resumo["pendentes"],
         "pedidos_aprovados": resumo["aprovados"],
         "pedidos_cancelados": resumo["cancelados"],
-        "ticket_medio": round(faturamento / total_pedidos, 2) if total_pedidos > 0 else 0,
+        "ticket_medio": _moeda(faturamento / pedidos_faturados) if pedidos_faturados > 0 else 0,
     }

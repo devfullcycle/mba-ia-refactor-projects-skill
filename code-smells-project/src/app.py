@@ -17,7 +17,8 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     logging.basicConfig(level=app.config["LOG_LEVEL"], format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    CORS(app)
+    if app.config["CORS_ORIGINS"]:
+        CORS(app, origins=app.config["CORS_ORIGINS"])
     database.init_app(app)
     register_error_handlers(app)
     register_routes(app)
@@ -25,7 +26,7 @@ def create_app(config_class=Config):
     with app.app_context():
         database.init_schema()
         if app.config["SEED_DB"]:
-            seed.seed_if_empty()
+            seed.executar_seed()
         usuario_model.migrar_senhas_legadas()
 
     return app

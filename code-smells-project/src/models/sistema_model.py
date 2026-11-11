@@ -1,4 +1,22 @@
+import sqlite3
+
 from src.config.database import get_db, get_readonly_db
+
+# Colunas que nunca podem ser lidas pela consulta administrativa.
+COLUNAS_PROIBIDAS = {("usuarios", "senha")}
+ACOES_PERMITIDAS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_FUNCTION}
+
+
+class ConsultaInvalidaError(Exception):
+    pass
+
+
+def _autorizador(acao, arg1, arg2, _db_name, _origem):
+    if acao not in ACOES_PERMITIDAS:
+        return sqlite3.SQLITE_DENY
+    if acao == sqlite3.SQLITE_READ and (arg1, arg2) in COLUNAS_PROIBIDAS:
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
 
 
 def contar_registros():
@@ -20,9 +38,12 @@ def limpar_tabelas():
 
 
 def executar_consulta_leitura(sql):
-    """Executa a consulta em uma conexão somente leitura: escrita é recusada pelo próprio SQLite."""
+    """Conexão somente leitura + authorizer: só SELECT, sem ATTACH/PRAGMA e sem acesso a hashes de senha."""
     conn = get_readonly_db()
+    conn.set_authorizer(_autorizador)
     try:
         return [dict(row) for row in conn.execute(sql).fetchall()]
+    except sqlite3.Error as exc:
+        raise ConsultaInvalidaError(str(exc)) from exc
     finally:
         conn.close()

@@ -1,10 +1,28 @@
+from enum import Enum
+
 from src.config.database import get_db
+
+
+class StatusPedido(str, Enum):
+    PENDENTE = "pendente"
+    APROVADO = "aprovado"
+    ENVIADO = "enviado"
+    ENTREGUE = "entregue"
+    CANCELADO = "cancelado"
+
+    @classmethod
+    def valores(cls):
+        return [status.value for status in cls]
 
 
 class EstoqueInsuficienteError(Exception):
     def __init__(self, produto_id):
         super().__init__(produto_id)
         self.produto_id = produto_id
+
+
+class StatusDesatualizadoError(Exception):
+    """O pedido mudou de status entre a leitura e a atualização (requisições concorrentes)."""
 
 
 def criar(usuario_id, itens, total):
@@ -16,8 +34,8 @@ def criar(usuario_id, itens, total):
     db = get_db()
     with db:
         cursor = db.execute(
-            "INSERT INTO pedidos (usuario_id, status, total) VALUES (?, 'pendente', ?)",
-            (usuario_id, total),
+            "INSERT INTO pedidos (usuario_id, status, total) VALUES (?, ?, ?)",
+            (usuario_id, StatusPedido.PENDENTE.value, total),
         )
         pedido_id = cursor.lastrowid
 
@@ -83,25 +101,52 @@ def listar_por_usuario(usuario_id):
     return _listar("WHERE p.usuario_id = ?", (usuario_id,))
 
 
-def existe(pedido_id):
-    return get_db().execute("SELECT 1 FROM pedidos WHERE id = ?", (pedido_id,)).fetchone() is not None
+def buscar_status(pedido_id):
+    row = get_db().execute("SELECT status FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
+    return row["status"] if row else None
 
 
-def atualizar_status(pedido_id, status):
+def atualizar_status(pedido_id, status_atual, novo_status):
+    """Troca o status só se ele ainda for `status_atual`; no cancelamento devolve o estoque na mesma transação."""
     db = get_db()
     with db:
-        db.execute("UPDATE pedidos SET status = ? WHERE id = ?", (status, pedido_id))
+        cursor = db.execute(
+            "UPDATE pedidos SET status = ? WHERE id = ? AND status = ?",
+            (novo_status, pedido_id, status_atual),
+        )
+        if cursor.rowcount == 0:
+            raise StatusDesatualizadoError(pedido_id)
+
+        if novo_status == StatusPedido.CANCELADO.value:
+            db.execute(
+                """
+                UPDATE produtos
+                SET estoque = estoque + (
+                    SELECT COALESCE(SUM(i.quantidade), 0) FROM itens_pedido i
+                    WHERE i.pedido_id = ? AND i.produto_id = produtos.id
+                )
+                WHERE id IN (SELECT produto_id FROM itens_pedido WHERE pedido_id = ?)
+                """,
+                (pedido_id, pedido_id),
+            )
 
 
 def resumo_vendas():
+    """Faturamento considera apenas pedidos não cancelados."""
     row = get_db().execute(
         """
         SELECT COUNT(*) AS total_pedidos,
-               COALESCE(SUM(total), 0) AS faturamento,
-               COALESCE(SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END), 0) AS pendentes,
-               COALESCE(SUM(CASE WHEN status = 'aprovado' THEN 1 ELSE 0 END), 0) AS aprovados,
-               COALESCE(SUM(CASE WHEN status = 'cancelado' THEN 1 ELSE 0 END), 0) AS cancelados
+               COALESCE(SUM(CASE WHEN status <> :cancelado THEN total END), 0) AS faturamento,
+               COALESCE(SUM(CASE WHEN status <> :cancelado THEN 1 ELSE 0 END), 0) AS pedidos_faturados,
+               COALESCE(SUM(CASE WHEN status = :pendente THEN 1 ELSE 0 END), 0) AS pendentes,
+               COALESCE(SUM(CASE WHEN status = :aprovado THEN 1 ELSE 0 END), 0) AS aprovados,
+               COALESCE(SUM(CASE WHEN status = :cancelado THEN 1 ELSE 0 END), 0) AS cancelados
         FROM pedidos
-        """
+        """,
+        {
+            "pendente": StatusPedido.PENDENTE.value,
+            "aprovado": StatusPedido.APROVADO.value,
+            "cancelado": StatusPedido.CANCELADO.value,
+        },
     ).fetchone()
     return dict(row)

@@ -1,6 +1,6 @@
 # 📑 Relatório de Auditoria Arquitetural — `ecommerce-api-legacy`
 
-**Data da Auditoria:** `2026-10-30`  
+**Data da Auditoria:** `2026-11-05` (revalidado; auditoria original em `2026-10-30`)  
 **Stack Detectada:** `JavaScript (Node.js)` / `Express 4.18`  
 **Domínio da Aplicação:** `LMS / venda de cursos online (cursos, matrículas, pagamentos, usuários)`  
 
@@ -17,6 +17,8 @@
 | **TOTAL** | **`15`** |
 
 > **APIs Deprecated:** nenhuma das APIs listadas no catálogo foi encontrada — o projeto já usa `express.json()` nativo (sem `body-parser`) e não usa `res.sendfile()`.
+>
+> **SQL Injection:** não encontrado — todas as queries com entrada do usuário usam placeholders `?` do driver `sqlite3`.
 
 ---
 

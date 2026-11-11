@@ -1,7 +1,4 @@
 import logging
-import sqlite3
-
-from flask import current_app
 
 from src.models import sistema_model
 from src.utils.errors import ValidationError
@@ -18,23 +15,21 @@ ENDPOINTS = {
 }
 
 
-def info_api():
+def info_api(versao):
     return {
         "mensagem": "Bem-vindo à API da Loja",
-        "versao": current_app.config["APP_VERSION"],
+        "versao": versao,
         "endpoints": ENDPOINTS,
     }
 
 
-def health_check():
-    # Configurações sensíveis (secret_key, caminho do banco) não são mais expostas.
+def health_check(versao, ambiente):
     return {
         "status": "ok",
         "database": "connected",
         "counts": sistema_model.contar_registros(),
-        "versao": current_app.config["APP_VERSION"],
-        "ambiente": current_app.config["APP_ENV"],
-        "debug": current_app.config["DEBUG"],
+        "versao": versao,
+        "ambiente": ambiente,
     }
 
 
@@ -51,6 +46,6 @@ def executar_consulta(dados):
         raise ValidationError("Apenas consultas SELECT são permitidas")
     try:
         return sistema_model.executar_consulta_leitura(query)
-    except sqlite3.Error:
-        logger.exception("Falha ao executar consulta administrativa")
-        raise ValidationError("Consulta SQL inválida")
+    except sistema_model.ConsultaInvalidaError:
+        logger.exception("Consulta administrativa recusada")
+        raise ValidationError("Consulta SQL inválida ou não permitida")

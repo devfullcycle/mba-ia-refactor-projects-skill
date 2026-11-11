@@ -1,13 +1,18 @@
-from src.models import pedido_model, produto_model
-from src.models.pedido_model import EstoqueInsuficienteError
+from src.controllers.usuario_controller import is_admin, verificar_acesso_ao_usuario
+from src.models import pedido_model, produto_model, usuario_model
+from src.models.pedido_model import EstoqueInsuficienteError, StatusDesatualizadoError, StatusPedido
 from src.services import notificacao_service
-from src.utils.errors import NotFoundError, ValidationError
+from src.utils.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from src.utils.validators import is_inteiro
 
-STATUS_VALIDOS = ["pendente", "aprovado", "enviado", "entregue", "cancelado"]
-
-
-def _is_inteiro(valor):
-    return isinstance(valor, int) and not isinstance(valor, bool)
+# Ciclo de vida do pedido: estados finais não têm saída.
+TRANSICOES_VALIDAS = {
+    StatusPedido.PENDENTE: {StatusPedido.APROVADO, StatusPedido.CANCELADO},
+    StatusPedido.APROVADO: {StatusPedido.ENVIADO, StatusPedido.CANCELADO},
+    StatusPedido.ENVIADO: {StatusPedido.ENTREGUE},
+    StatusPedido.ENTREGUE: set(),
+    StatusPedido.CANCELADO: set(),
+}
 
 
 def _validar_itens(itens):
@@ -16,21 +21,33 @@ def _validar_itens(itens):
     for item in itens:
         if (
             not isinstance(item, dict)
-            or not _is_inteiro(item.get("produto_id"))
-            or not _is_inteiro(item.get("quantidade"))
+            or not is_inteiro(item.get("produto_id"))
+            or not is_inteiro(item.get("quantidade"))
             or item["quantidade"] <= 0
         ):
             raise ValidationError("Itens devem conter produto_id e quantidade (inteiro positivo)")
 
 
-def criar_pedido(dados):
+def _resolver_usuario_do_pedido(dados, usuario_logado):
+    """O pedido é do usuário autenticado; apenas admin pode criar em nome de outro usuário."""
+    usuario_id = dados.get("usuario_id", usuario_logado["id"])
+    if not is_inteiro(usuario_id):
+        raise ValidationError("usuario_id deve ser um número inteiro")
+    if usuario_id == usuario_logado["id"]:
+        return usuario_id
+    if not is_admin(usuario_logado):
+        raise ForbiddenError("Não é permitido criar pedidos para outro usuário")
+    if usuario_model.buscar_por_id(usuario_id) is None:
+        raise ValidationError("Usuário " + str(usuario_id) + " não encontrado")
+    return usuario_id
+
+
+def criar_pedido(dados, usuario_logado):
     if not dados or not isinstance(dados, dict):
         raise ValidationError("Dados inválidos")
 
-    usuario_id = dados.get("usuario_id")
+    usuario_id = _resolver_usuario_do_pedido(dados, usuario_logado)
     itens = dados.get("itens", [])
-    if not usuario_id:
-        raise ValidationError("Usuario ID é obrigatório")
     _validar_itens(itens)
 
     produtos = produto_model.buscar_por_ids({item["produto_id"] for item in itens})
@@ -53,10 +70,11 @@ def criar_pedido(dados):
         raise ValidationError("Estoque insuficiente para " + produtos[exc.produto_id]["nome"])
 
     notificacao_service.notificar_pedido_criado(pedido_id, usuario_id)
-    return {"pedido_id": pedido_id, "total": total}
+    return {"pedido_id": pedido_id, "usuario_id": usuario_id, "total": total}
 
 
-def listar_pedidos_usuario(usuario_id):
+def listar_pedidos_usuario(usuario_id, usuario_logado):
+    verificar_acesso_ao_usuario(usuario_logado, usuario_id)
     return pedido_model.listar_por_usuario(usuario_id)
 
 
@@ -65,11 +83,22 @@ def listar_todos_pedidos():
 
 
 def atualizar_status_pedido(pedido_id, dados):
-    novo_status = dados.get("status", "") if isinstance(dados, dict) else ""
-    if novo_status not in STATUS_VALIDOS:
-        raise ValidationError("Status inválido")
-    if not pedido_model.existe(pedido_id):
-        raise NotFoundError("Pedido não encontrado")
+    valor = dados.get("status", "") if isinstance(dados, dict) else ""
+    if valor not in StatusPedido.valores():
+        raise ValidationError("Status inválido. Válidos: " + ", ".join(StatusPedido.valores()))
+    novo_status = StatusPedido(valor)
 
-    pedido_model.atualizar_status(pedido_id, novo_status)
+    status_atual = pedido_model.buscar_status(pedido_id)
+    if status_atual is None:
+        raise NotFoundError("Pedido não encontrado")
+    status_atual = StatusPedido(status_atual)
+
+    if novo_status not in TRANSICOES_VALIDAS[status_atual]:
+        raise ConflictError(f"Transição de status inválida: {status_atual.value} -> {novo_status.value}")
+
+    try:
+        pedido_model.atualizar_status(pedido_id, status_atual.value, novo_status.value)
+    except StatusDesatualizadoError:
+        raise ConflictError("Pedido alterado por outra requisição; tente novamente")
+
     notificacao_service.notificar_mudanca_status(pedido_id, novo_status)

@@ -56,16 +56,20 @@ Deseja prosseguir com a Fase 3 (Refatoração Automática para MVC)? [y/N]
 
 NÃO altere nem crie nenhum arquivo de código antes de receber a confirmação explícita do usuário.
 
-## FASE 3 — Refatoração Arquitetural Automática
+## FASE 3 — Refatoração Arquitetural Automática e Validação
 
 1. **Leitura de Diretrizes:** Leia o arquivo `playbook_refatoracao.md` e a `guideline_arquitetura_mvc.md`.
 2. **Execução Modular Estruturada:** Com base nas Fases 1 e 2, execute a refatoração progressiva para o padrão MVC:
-   - **Camada Model:** Centralize toda a lógica de persistência, conexão, esquemas e acesso a dados em diretórios dedicados (`src/models/` ou equivalente). Elimine queries SQL espalhadas ou hardcoded.
-   - **Camada Controller / Services:** Isole as regras de negócio, validações e tratamentos em controllers ou services dedicados, mantendo as rotas limpas.
-   - **Camada Routes / Views:** Reestruture as rotas para atuarem apenas como mapeadores de endpoints HTTP que despacham as requisições para os controllers.
-   - **Configurações e Segurança:** Extraia credenciais, chaves e variáveis sensíveis para o diretório `src/config/` utilizando variáveis de ambiente (`.env`).
+   - **Camada Model:** Centralize toda a persistência e acesso a dados em `src/models/`.
+   - **Camada Controller / Services:** Isole as regras de negócio em controllers dedicados.
+   - **Camada Routes / Views:** Reestruture as rotas para despacharem para os controllers.
+   - **Configurações e Segurança:** Extraia credenciais para `.env` em `src/config/`.
 3. **Validação de Contrato:** Assegure que o código refatorado mantenha o contrato funcional original da aplicação (mantendo endpoints, métodos HTTP e estruturas de resposta compatíveis).
-4. **Output da Fase 3:** Imprima no terminal um relatório claro resumindo todas as alterações estruturais realizadas no formato:
+4. **Validação Prática de Execução:** 
+   - **Boot da Aplicação:** O agente deve subir a aplicação localmente para testar a integridade da inicialização.
+   - **Teste de Endpoints:** O agente deve executar chamadas reais de teste (ex: via comandos HTTP/PowerShell ou script de teste) nos endpoints principais (públicos e protegidos) para comprovar que o contrato funcional e a segurança (tokens/middlewares) estão funcionando perfeitamente.
+5. **Output da Fase 3:** Imprima no terminal o relatório resumindo as alterações e os resultados dos testes funcionais realizados.
+
    ```text
    ==================================================
    FASE 3: RESUMO DA REFATORAÇÃO MVC CONCLUÍDA

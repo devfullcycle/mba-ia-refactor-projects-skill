@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Boilerplate com código legado para refatoração",
   "main": "src/app.js",
+  "engines": {
+    "node": ">=20.12"
+  },
   "scripts": {
     "start": "node src/app.js"
   },

@@ -2,6 +2,7 @@ import logging
 
 from src.models import produto_model
 from src.utils.errors import NotFoundError, ValidationError
+from src.utils.validators import is_inteiro, is_numero
 
 logger = logging.getLogger(__name__)
 
@@ -9,10 +10,6 @@ CATEGORIAS_VALIDAS = ["informatica", "moveis", "vestuario", "geral", "eletronico
 CATEGORIA_PADRAO = "geral"
 NOME_MIN = 2
 NOME_MAX = 200
-
-
-def _is_numero(valor):
-    return isinstance(valor, (int, float)) and not isinstance(valor, bool)
 
 
 def _validar_dados_produto(dados):
@@ -33,9 +30,9 @@ def _validar_dados_produto(dados):
 
     if not isinstance(nome, str) or not isinstance(descricao, str) or not isinstance(categoria, str):
         raise ValidationError("Nome, descrição e categoria devem ser texto")
-    if not _is_numero(preco):
+    if not is_numero(preco):
         raise ValidationError("Preço deve ser numérico")
-    if not isinstance(estoque, int) or isinstance(estoque, bool):
+    if not is_inteiro(estoque):
         raise ValidationError("Estoque deve ser um número inteiro")
 
     if preco < 0:
@@ -86,9 +83,10 @@ def atualizar_produto(produto_id, dados):
 
 
 def deletar_produto(produto_id):
+    """Exclusão lógica: o produto sai do catálogo, mas o histórico de pedidos continua íntegro."""
     obter_produto(produto_id)
-    produto_model.deletar(produto_id)
-    logger.info("Produto %s deletado", produto_id)
+    produto_model.desativar(produto_id)
+    logger.info("Produto %s desativado", produto_id)
 
 
 def buscar_produtos(termo, categoria, preco_min, preco_max):

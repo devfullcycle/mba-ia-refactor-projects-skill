@@ -1,27 +1,31 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, request
 
 from src.controllers import usuario_controller
+from src.middlewares.auth import admin_required, login_required
+from src.utils.responses import sucesso
 
 usuario_bp = Blueprint("usuarios", __name__)
 
 
 @usuario_bp.get("/usuarios")
+@admin_required
 def listar_usuarios():
-    return jsonify({"dados": usuario_controller.listar_usuarios(), "sucesso": True}), 200
+    return sucesso(usuario_controller.listar_usuarios())
 
 
 @usuario_bp.get("/usuarios/<int:usuario_id>")
+@login_required
 def buscar_usuario(usuario_id):
-    return jsonify({"dados": usuario_controller.obter_usuario(usuario_id), "sucesso": True}), 200
+    return sucesso(usuario_controller.obter_usuario(usuario_id, g.usuario))
 
 
 @usuario_bp.post("/usuarios")
 def criar_usuario():
     usuario_id = usuario_controller.criar_usuario(request.get_json(silent=True))
-    return jsonify({"dados": {"id": usuario_id}, "sucesso": True}), 201
+    return sucesso({"id": usuario_id}, status=201)
 
 
 @usuario_bp.post("/login")
 def login():
-    usuario = usuario_controller.login(request.get_json(silent=True))
-    return jsonify({"dados": usuario, "sucesso": True, "mensagem": "Login OK"}), 200
+    usuario, token = usuario_controller.login(request.get_json(silent=True))
+    return sucesso(usuario, mensagem="Login OK", token=token)
