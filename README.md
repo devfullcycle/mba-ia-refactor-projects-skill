@@ -9,8 +9,8 @@ O ambiente contém a raiz do repositório com três subprojetos legados, além d
 ```text
 mba-ia-refactor-projects-skill/
 ├── code-smells-project/                # Python / Flask 3.1.1 (API E-Commerce - SQL nativo / Alto acoplamento)
-├── .claude/
-│   └── skills/
+|   └── .claude/
+│     └── skills/
 │       └── refactor-arch/
 │           ├── SKILL.md                     # Orquestração principal da skill (Fases 1, 2 e 3)
 │           ├── analise_heuristica.md        # Heurísticas de detecção e mapeamento inicial
@@ -19,8 +19,8 @@ mba-ia-refactor-projects-skill/
 │           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
 │           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
 ├── ecommerce-api-legacy/               # Node.js / Express 4.18 (LMS API - God Class / BD em memória)
-├── .claude/
-│   └── skills/
+|   └── .claude/
+│     └── skills/
 │       └── refactor-arch/
 │           ├── SKILL.md                     # Orquestração principal da skill (Fases 1, 2 e 3)
 │           ├── analise_heuristica.md        # Heurísticas de detecção e mapeamento inicial
@@ -29,8 +29,8 @@ mba-ia-refactor-projects-skill/
 │           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
 │           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
 └── task-manager-api/                   # Python / Flask 3.0 / SQLAlchemy (Task Manager - Parcialmente organizado)
-├── .claude/
-│   └── skills/
+|   └── .claude/
+│     └── skills/
 │       └── refactor-arch/
 │           ├── SKILL.md                     # Orquestração principal da skill (Fases 1, 2 e 3)
 │           ├── analise_heuristica.md        # Heurísticas de detecção e mapeamento inicial
@@ -38,6 +38,10 @@ mba-ia-refactor-projects-skill/
 │           ├── guideline_arquitetura_mvc.md # Blueprint da arquitetura MVC alvo
 │           ├── template_relatorio.md        # Template oficial para relatórios de auditoria
 │           └── playbook_refatoracao.md      # Playbook de Refatoração (Exemplos Antes vs. Depois)
+└── reports/                           # Relatórios gerados
+│     ├── audit-project-1.md           # Saída da Fase 2 no projeto 1
+│     ├── audit-project-2.md           # Saída da Fase 2 no projeto 2
+│     ├── audit-project-3.md           # Saída da Fase 2 no projeto 3
 ```
 
 ---
