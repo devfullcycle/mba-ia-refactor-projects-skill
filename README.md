@@ -108,17 +108,22 @@ src/
 ================================
 ```
 
-## Tecnologias obrigatórias
+## Tecnologias
 
-- **Ferramenta:** uma das três opções abaixo (não são aceitas outras ferramentas):
+- **Ferramenta sugerida:** uma das três opções abaixo:
   - Claude Code
   - Gemini CLI
   - OpenAI Codex
+
+Você pode usar outra ferramenta agêntica de sua preferência, desde que ela suporte o conceito de skill (ou equivalente) e atinja os resultados esperados.
+
+**Obrigatórios:**
+
 - **Recurso:** Custom Skills (ou o equivalente na ferramenta escolhida)
 - **Formato dos arquivos de referência:** Markdown
 - **Projetos-alvo:** Python/Flask (2 projetos) e Node.js/Express (1 projeto) (fornecidos no repositório base)
 
-> **Nota sobre a ferramenta:** Os exemplos deste documento usam o Claude Code (`.claude/skills/`) como referência, pois é a ferramenta utilizada no curso. Se você optar por Gemini CLI ou Codex, adapte o nome da pasta e o comando de invocação conforme a convenção dela — o conceito de skill e a estrutura interna (SKILL.md + arquivos de referência) permanecem os mesmos.
+> **Nota sobre a ferramenta:** Os exemplos deste documento usam o Claude Code (`.claude/skills/`) como referência, pois é a ferramenta utilizada no curso. Se você optar por outra ferramenta, adapte o nome da pasta e o comando de invocação conforme a convenção dela — o conceito de skill e a estrutura interna (SKILL.md + arquivos de referência) permanecem os mesmos. Ferramentas agênticas e os modelos por trás delas mudam com frequência, então consulte a documentação oficial da ferramenta escolhida para confirmar os nomes corretos de arquivos, pastas e comandos, e quais modelos estão disponíveis no momento em que você estiver fazendo o desafio.
 
 ## Requisitos
 
@@ -189,7 +194,7 @@ Invocar a skill no Claude Code:
 claude "/refactor-arch"
 ```
 
-> **Nota:** O comando acima é o exemplo com Claude Code. Se você estiver usando Gemini CLI ou Codex, utilize o comando equivalente para invocar uma skill na sua ferramenta.
+> **Nota:** O comando acima é o exemplo com Claude Code. Se você estiver usando outra ferramenta, utilize o comando equivalente para invocar uma skill nela.
 
 - Verificar que a Fase 1 detecta corretamente a stack e imprime o resumo
 - Verificar que a Fase 2 encontra no mínimo 5 dos problemas documentados na sua análise manual
@@ -198,7 +203,7 @@ claude "/refactor-arch"
   - Cria a estrutura de diretórios baseada em MVC
   - A aplicação inicia sem erros
   - Os endpoints originais continuam respondendo
-- Salvar o relatório de auditoria (output da Fase 2) em `reports/audit-project-1.md`
+- Salvar o relatório de auditoria (output da Fase 2) em `reports/audit-project-1.md`, na raiz do repositório
 - Commitar o código refatorado do projeto no repositório
 
 #### Projeto 2 — ecommerce-api-legacy (Node.js/Express)
@@ -214,7 +219,7 @@ claude "/refactor-arch"
 ```
 
 - Verificar que as 3 fases executam corretamente neste projeto
-- Salvar o relatório em `reports/audit-project-2.md`
+- Salvar o relatório em `reports/audit-project-2.md`, na raiz do repositório
 - Commitar o código refatorado do projeto no repositório
 
 #### Projeto 3 — task-manager-api (Python/Flask)
@@ -233,7 +238,7 @@ claude "/refactor-arch"
   - A Fase 1 detecta corretamente Python/Flask como stack e identifica o domínio de Task Manager
   - A Fase 2 identifica problemas mesmo em um projeto parcialmente organizado
   - A Fase 3 melhora a estrutura sem quebrar a aplicação (todos os endpoints devem continuar respondendo)
-- Salvar o relatório em `reports/audit-project-3.md`
+- Salvar o relatório em `reports/audit-project-3.md`, na raiz do repositório
 - Commitar o código refatorado do projeto no repositório
 
 > **Nota:** Este projeto já possui alguma separação de camadas, mas isso não significa que a arquitetura está adequada. A skill deve identificar tanto problemas de código (segurança, performance, qualidade) quanto oportunidades de melhoria arquitetural. Se houver mudanças estruturais necessárias, a skill deve propô-las e executá-las.
@@ -284,12 +289,12 @@ Repositório público no GitHub (fork do repositório base) contendo:
 
 ### Estrutura do repositório
 
-Faça um fork do repositório base contendo os três projetos com code smells.
+Faça um fork do repositório base contendo os três projetos com code smells: https://github.com/devfullcycle/mba-ia-refactor-projects-skill
 
 > **Nota:** A estrutura abaixo usa Claude Code como exemplo (`.claude/skills/`). Se estiver usando outra ferramenta, adapte os caminhos conforme a convenção dela.
 
 ```
-desafio-skills/
+mba-ia-refactor-projects-skill/
 ├── README.md                              # Sua documentação
 │
 ├── code-smells-project/                   # Projeto 1 — Python/Flask (API de E-commerce)
@@ -376,7 +381,7 @@ desafio-skills/
 
 **D) Seção "Como Executar":**
 
-- Pré-requisitos (a ferramenta escolhida — Claude Code, Gemini CLI ou Codex — instalada e configurada)
+- Pré-requisitos (a ferramenta escolhida, instalada e configurada)
 - Comandos para executar a skill em cada projeto
 - Como validar que a refatoração funcionou
 
@@ -406,7 +411,7 @@ cd ../task-manager-api
 claude "/refactor-arch"
 ```
 
-Salve a saída da Fase 2 de cada projeto em `reports/audit-project-{1,2,3}.md`.
+Salve a saída da Fase 2 de cada projeto em `reports/audit-project-{1,2,3}.md`, na raiz do repositório.
 
 **4. Iterar**
 
