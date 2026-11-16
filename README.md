@@ -4,6 +4,9 @@
 **Repositório de entrega no GitHub:**
   - [ivanaugustineli/mba-ia-refactor-projects-skill](https://github.com/ivanaugustineli/mba-ia-refactor-projects-skill)
 
+**Modelo de IA utilizado:**
+  - Claude Sonnet 5.5 (with medium effort).
+
 ---
 ## 📌 Visão Geral do Projeto
 
@@ -172,6 +175,13 @@ Neste projeto desafio, foi criada uma Skill que automatiza o processo de revisã
     | LOW      | 2 |
     | **Total** | **11** |  
   ### 📂 **task-manager-api**
+    | Severidade | Qtde |
+    |---|---|
+    | CRITICAL | 2 |
+    | HIGH     | 4 |
+    | MEDIUM   | 4 |
+    | LOW      | 2 |
+    | **Total** | **12** |
 
 - ### Comparação antes/depois da estrutura de cada projeto.
   ### 📂 **code-smells-project**
@@ -320,6 +330,66 @@ Neste projeto desafio, foi criada uma Skill que automatiza o processo de revisã
     └── seed.py
     ```
   - *Estrutura Atual*
+    ~~~
+    task-manager-api/
+    ├── config/
+    │   ├── __init__.py
+    │   └── settings.py
+    ├── models/
+    │   ├── __init__.py
+    │   ├── category.py
+    │   ├── task.py
+    │   └── user.py
+    ├── services/
+    │   ├── __init__.py
+    │   ├── category_service.py
+    │   ├── notification_service.py
+    │   ├── report_service.py
+    │   ├── task_service.py
+    │   └── user_service.py
+    ├── controllers/
+    │   ├── __init__.py
+    │   ├── category_controller.py
+    │   ├── health_controller.py
+    │   ├── report_controller.py
+    │   ├── task_controller.py
+    │   └── user_controller.py
+    ├── validators/
+    │   ├── __init__.py
+    │   ├── category_validator.py
+    │   ├── task_validator.py
+    │   └── user_validator.py
+    ├── views/
+    │   ├── __init__.py
+    │   ├── category_view.py
+    │   ├── task_view.py
+    │   └── user_view.py
+    ├── routes/
+    │   ├── __init__.py
+    │   ├── category_routes.py
+    │   ├── health_routes.py
+    │   ├── report_routes.py
+    │   ├── task_routes.py
+    │   └── user_routes.py
+    ├── middlewares/
+    │   ├── __init__.py
+    │   ├── auth.py
+    │   └── error_handler.py
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── clock.py
+    │   ├── constants.py
+    │   ├── errors.py
+    │   ├── request_utils.py
+    │   └── stats.py
+    ├── app.py                      # create_app(): composition root
+    ├── database.py                 # db, init_db(), commit_or_fail()
+    ├── seed.py
+    ├── requirements.txt
+    ├── README.md
+    ├── .env.example
+    └── .gitignore
+    ~~~
 
 - ### Checklist de validação preenchido para cada projeto.
   ### 📂 **code-smells-project**
@@ -425,8 +495,19 @@ Neste projeto desafio, foi criada uma Skill que automatiza o processo de revisã
   ![Evidência 2_4](./screenshots/ecommerce-api-legacy-4.png)
   ![Evidência 2_5](./screenshots/ecommerce-api-legacy-5.png)
   ### 📂 **task-manager-api**
+  ![Evidência 3_0](./screenshots/task-manager-api-0.png)
+  ![Evidência 3_1](./screenshots/task-manager-api-1.png)
+  ![Evidência 3_2](./screenshots/task-manager-api-2.png)
+  ![Evidência 3_3](./screenshots/task-manager-api-3.png)
+  ![Evidência 3_4](./screenshots/task-manager-api-4.png)
+  ![Evidência 3_5](./screenshots/task-manager-api-5.png)
+  ![Evidência 3_6](./screenshots/task-manager-api-6.png)
+  ![Evidência 3_7](./screenshots/task-manager-api-7.png)
 
 - ### Observações sobre como a skill se comportou em stacks diferentes.
+
+  Não persebi dificuldade da skill em analisar e refatorar cada projeto, ela apenas levou mais tempo no projeto 3, devido a complexidade maior.
+
 
 ## ⏯️ *Como Executar*
 ### Pré-requisitos:

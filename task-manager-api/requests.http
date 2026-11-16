@@ -1,0 +1,267 @@
+# Testes manuais da task-manager-api (extensão "REST Client" do VS Code).
+# Antes: pip install -r requirements.txt && python seed.py && python app.py
+# Clique em "Send Request" acima de cada bloco. Blocos separados por ###.
+
+@baseUrl = http://localhost:5000
+@contentType = application/json
+
+###############################################################
+# Saúde
+###############################################################
+
+### Index
+GET {{baseUrl}}/
+
+### Health
+GET {{baseUrl}}/health
+
+###############################################################
+# Login (rode antes das rotas protegidas)
+# Seed: joao@email.com/1234 (admin), maria@email.com/abcd (user),
+#       pedro@email.com/pass (manager)
+###############################################################
+
+### Login como admin (guarda o token em {{adminToken}})
+# @name loginAdmin
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "joao@email.com",
+  "password": "1234"
+}
+
+###
+@adminToken = {{loginAdmin.response.body.token}}
+
+### Login como usuário comum (guarda o token em {{userToken}})
+# @name loginUser
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "maria@email.com",
+  "password": "abcd"
+}
+
+###
+@userToken = {{loginUser.response.body.token}}
+
+### Login com senha errada -> 401
+POST {{baseUrl}}/login
+Content-Type: {{contentType}}
+
+{
+  "email": "joao@email.com",
+  "password": "errada"
+}
+
+###############################################################
+# Tasks
+###############################################################
+
+### Listar tasks
+GET {{baseUrl}}/tasks
+
+### Buscar task por id
+GET {{baseUrl}}/tasks/1
+
+### Task inexistente -> 404
+GET {{baseUrl}}/tasks/999
+
+### Criar task -> 201
+# @name createTask
+POST {{baseUrl}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Minha nova task",
+  "description": "Criada pelo REST Client",
+  "priority": 2,
+  "user_id": 1,
+  "category_id": 1,
+  "due_date": "2030-01-31",
+  "tags": ["manual", "teste"]
+}
+
+###
+@newTaskId = {{createTask.response.body.id}}
+
+### Criar task inválida (título curto) -> 400
+POST {{baseUrl}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "ab"
+}
+
+### Criar task com prioridade não numérica -> 400
+POST {{baseUrl}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Prioridade inválida",
+  "priority": "alta"
+}
+
+### Atualizar task criada
+PUT {{baseUrl}}/tasks/{{newTaskId}}
+Content-Type: {{contentType}}
+
+{
+  "status": "in_progress",
+  "priority": 1
+}
+
+### Buscar tasks (texto + status)
+GET {{baseUrl}}/tasks/search?q=Config&status=pending
+
+### Buscar tasks por prioridade e usuário
+GET {{baseUrl}}/tasks/search?priority=1&user_id=1
+
+### Busca com prioridade inválida -> 400
+GET {{baseUrl}}/tasks/search?priority=abc
+
+### Estatísticas de tasks
+GET {{baseUrl}}/tasks/stats
+
+### Deletar task SEM token -> 401
+DELETE {{baseUrl}}/tasks/{{newTaskId}}
+
+### Deletar task COM token -> 200
+DELETE {{baseUrl}}/tasks/{{newTaskId}}
+Authorization: Bearer {{userToken}}
+
+###############################################################
+# Usuários
+###############################################################
+
+### Listar usuários (sem campo password)
+GET {{baseUrl}}/users
+
+### Buscar usuário com suas tasks
+GET {{baseUrl}}/users/1
+
+### Tasks de um usuário
+GET {{baseUrl}}/users/1/tasks
+
+### Criar usuário comum -> 201
+# @name createUser
+POST {{baseUrl}}/users
+Content-Type: {{contentType}}
+
+{
+  "name": "Ana Teste",
+  "email": "ana.teste@email.com",
+  "password": "senha123"
+}
+
+###
+@newUserId = {{createUser.response.body.id}}
+
+### Criar usuário com e-mail repetido -> 409
+POST {{baseUrl}}/users
+Content-Type: {{contentType}}
+
+{
+  "name": "Ana Teste",
+  "email": "ana.teste@email.com",
+  "password": "senha123"
+}
+
+### Criar admin SEM token de admin -> 401
+POST {{baseUrl}}/users
+Content-Type: {{contentType}}
+
+{
+  "name": "Admin Falso",
+  "email": "falso@email.com",
+  "password": "senha123",
+  "role": "admin"
+}
+
+### Criar admin COM token de admin -> 201
+POST {{baseUrl}}/users
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Admin Legítimo",
+  "email": "admin.legitimo@email.com",
+  "password": "senha123",
+  "role": "admin"
+}
+
+### Atualizar usuário
+PUT {{baseUrl}}/users/{{newUserId}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Ana Atualizada"
+}
+
+### Deletar usuário com token de usuário comum -> 403
+DELETE {{baseUrl}}/users/{{newUserId}}
+Authorization: Bearer {{userToken}}
+
+### Deletar usuário com token de admin -> 200
+DELETE {{baseUrl}}/users/{{newUserId}}
+Authorization: Bearer {{adminToken}}
+
+###############################################################
+# Categorias
+###############################################################
+
+### Listar categorias (com task_count)
+GET {{baseUrl}}/categories
+
+### Criar categoria -> 201
+# @name createCategory
+POST {{baseUrl}}/categories
+Content-Type: {{contentType}}
+
+{
+  "name": "Teste manual",
+  "description": "Categoria criada pelo REST Client",
+  "color": "#123456"
+}
+
+###
+@newCategoryId = {{createCategory.response.body.id}}
+
+### Criar categoria com cor inválida -> 400
+POST {{baseUrl}}/categories
+Content-Type: {{contentType}}
+
+{
+  "name": "Cor ruim",
+  "color": "vermelho"
+}
+
+### Atualizar categoria
+PUT {{baseUrl}}/categories/{{newCategoryId}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Teste manual (editada)"
+}
+
+### Deletar categoria SEM token -> 401
+DELETE {{baseUrl}}/categories/{{newCategoryId}}
+
+### Deletar categoria COM token -> 200
+DELETE {{baseUrl}}/categories/{{newCategoryId}}
+Authorization: Bearer {{userToken}}
+
+###############################################################
+# Relatórios
+###############################################################
+
+### Resumo geral
+GET {{baseUrl}}/reports/summary
+
+### Relatório de um usuário
+GET {{baseUrl}}/reports/user/1
+
+### Relatório de usuário inexistente -> 404
+GET {{baseUrl}}/reports/user/999
