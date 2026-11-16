@@ -112,50 +112,349 @@ Neste projeto desafio, foi criada uma Skill que automatiza o processo de revisã
 
 ## 🚧 *Construção da Skill*
 
-- Decisões de design: como estruturou o SKILL.md e os arquivos de referência
-- Quais anti-patterns incluiu no catálogo e por quê
-- Como garantiu que a skill é agnóstica de tecnologia
-- Desafios encontrados e como resolveu
+- ### Decisões de design: como estruturou o SKILL.md e os arquivos de referência?
+
+  - **`SKILL.md` enxuto, só com o fluxo:** frontmatter, as 3 fases em ordem (Análise, Auditoria, Refatoração), formatos de saída e princípios. O conhecimento pesado fica em `references/`.
+  - **Cinco referências, cada uma ligada a uma fase:**
+    - `project-analysis.md`: Fase 1.
+    - `anti-patterns-catalog.md` e `report-template.md`: Fase 2.
+    - `mvc-guidelines.md`: Fases 2 e 3.
+    - `refactoring-playbook.md`: Fase 3.
+  - **Leitura sob demanda:** uma tabela no `SKILL.md` indica quando ler cada arquivo, evitando carregar tudo no contexto.
+  - **Pausa obrigatória entre as Fases 2 e 3:** nenhum arquivo é alterado sem um "sim" explícito. O único arquivo permitido antes disso é o relatório em `reports/` no diretório raiz.
+  - **Descrição "pushy":** lista vários gatilhos ("code smells", "legado", "deprecated", "refatorar") para a skill disparar mesmo sem citar MVC.
+  - **Validação exigida:** a Fase 3 grava uma baseline dos endpoints antes de mexer, compara depois e proíbe declarar sucesso sem evidência.
+
+- ### Quais anti-patterns incluiu no catálogo e por quê
+
+  São 12 anti-patterns mais a categoria AP-13 (APIs deprecated), organizados por severidade:
+
+  | Severidade | Anti-patterns | Por quê |
+  |---|---|---|
+  | CRITICAL | SQL injection, credenciais hardcoded, exposição de dados sensíveis / autenticação fraca | Falhas exploráveis ou risco de perda de dados. Corrigir primeiro. |
+  | HIGH | God class, lógica de negócio no controller, estado global, tratamento de erros inadequado | Violam o MVC e impedem manutenção e testes. |
+  | MEDIUM | N+1, validação ausente ou duplicada, duplicação (DRY) | Degradam performance e qualidade. |
+  | LOW | Magic numbers, nomenclatura inconsistente | Estilo e convenção. |
+
+  Os anti-patterns foram escolhidos porque aparecem nos projetos legados analisados manualmente (credenciais, MD5, lógica no controller, bare except, imports não usados) e porque têm sinais de detecção independentes de stack. O AP-13 é tratado à parte porque o desafio exige detecção de APIs deprecated.
+
+- ### Como garantiu que a skill é agnóstica de tecnologia?
+
+  - **Sinais descritos por padrão, não por sintaxe:** por exemplo, "SQL montado por concatenação, f-string ou template literal, sem placeholders", com exemplos em várias linguagens.
+  - **MVC traduzido para a stack detectada:** Model, Controller e Route são adaptados ao idioma do ecossistema, sem impor uma estrutura única.
+  - **Tabela de deprecated é só exemplo:** cobre Node, Express, Flask, SQLAlchemy, Django, Java, Spring e PHP, mas a skill manda aplicar o mesmo raciocínio a qualquer API e consultar a documentação oficial (ex.: Context7) em caso de dúvida.
+  - **Fase 1 detecta antes de julgar:** identifica linguagem, framework, banco e entry point primeiro. O catálogo não tem receitas presas a um framework.
+
+- ### Desafios encontrados e como resolveu?
+
+  - **Equilíbrio entre genérico e acionável:** sinais por heurística no catálogo e exemplos concretos antes/depois no playbook.
+  - **Refatorar sem quebrar contratos:** baseline de endpoints, validação comparativa e lista explícita de mudanças de comportamento intencionais (ex.: parar de expor a senha).
+  - **Projetos já organizados:** um princípio evita reestruturar por reestruturar e foca nos desvios reais.
+  - **Risco de achados inventados:** a skill exige arquivo e linhas reais e proíbe forçar achados em categorias sem sinal.
 
 ## 📈 *Resultados*
 
-- Resumo dos relatórios de auditoria dos 3 projetos (quantos findings por severidade em cada)
-- Comparação antes/depois da estrutura de cada projeto
-- Checklist de validação preenchido para cada projeto
-- Screenshots ou logs mostrando as aplicações rodando após refatoração
-- Observações sobre como a skill se comportou em stacks diferentes
+- ### Resumo dos relatórios de auditoria dos 3 projetos (quantos findings por severidade em cada?)
+  ### 📂 **code-smells-project**
+    | Severidade | Qtde |
+    |---|---|
+    | CRITICAL | 3 |
+    | HIGH     | 4 |
+    | MEDIUM   | 3 |
+    | LOW      | 2 |
+    | **Total** | **12** |
+  ### 📂 **ecommerce-api-legacy**
+    | Severidade | Qtde |
+    |---|---|
+    | CRITICAL | 2 |
+    | HIGH     | 4 |
+    | MEDIUM   | 3 |
+    | LOW      | 2 |
+    | **Total** | **11** |  
+  ### 📂 **task-manager-api**
+
+- ### Comparação antes/depois da estrutura de cada projeto.
+  ### 📂 **code-smells-project**
+  - *Estrutura Anterior*
+    ```
+    code-smells-project/
+    ├── app.py
+    ├── controllers.py
+    ├── database.py
+    ├── models.py
+    ├── README.md
+    └── requirements.txt
+    ```
+  - *Estrutura Atual*
+    ```
+    code-smells-project/
+    ├── config/
+    │   ├── __init__.py
+    │   ├── constants.py            # categorias, status, faixas de desconto
+    │   └── settings.py             # SECRET_KEY, DEBUG, HOST, PORT, DB_PATH, ADMIN_TOKEN...
+    ├── controllers/
+    │   ├── __init__.py
+    │   ├── pedido_controller.py
+    │   ├── produto_controller.py
+    │   ├── relatorio_controller.py
+    │   ├── sistema_controller.py
+    │   └── usuario_controller.py
+    ├── database/
+    │   ├── __init__.py
+    │   ├── connection.py           # conexão por request (flask.g)
+    │   └── schema.py               # criação de tabelas + seed
+    ├── middlewares/
+    │   ├── __init__.py
+    │   ├── auth.py                 # admin_required (X-Admin-Token)
+    │   └── error_handler.py        # tratamento central de erros
+    ├── models/
+    │   ├── __init__.py
+    │   ├── pedido_model.py
+    │   ├── produto_model.py
+    │   ├── relatorio_model.py
+    │   ├── sistema_model.py
+    │   └── usuario_model.py
+    ├── routes/
+    │   └── __init__.py             # blueprints: produtos, usuarios, pedidos, relatorios, sistema
+    ├── services/
+    │   ├── __init__.py
+    │   ├── notificacao_service.py
+    │   ├── pedido_service.py
+    │   ├── relatorio_service.py
+    │   └── usuario_service.py
+    ├── validators/
+    │   ├── __init__.py
+    │   ├── pedido_validator.py
+    │   ├── produto_validator.py
+    │   └── usuario_validator.py
+    ├── views/
+    │   ├── __init__.py
+    │   └── serializers.py          # serializa sem expor senha
+    ├── .env.example
+    ├── app.py                      # composition root (create_app)
+    ├── exceptions.py               # AppError, ValidationError, NotFoundError...
+    ├── loja.db                     # ignorado pelo git
+    ├── README.md
+    └── requirements.txt
+    ```
+  ### 📂 **ecommerce-api-legacy**
+  - *Estrutura Anterior*
+    ```
+    ecommerce-api-legacy/
+    ├── src/
+    │   ├── app.js
+    │   ├── AppManager.js
+    │   └── utils.js
+    ├── api.http
+    ├── package-lock.json
+    ├── package.json
+    └── README.md
+    ```
+  - *Estrutura Atual*
+    ~~~
+    ecommerce-api-legacy/
+    ├── src/
+    │   ├── app.js                    # composition root
+    │   ├── constants.js
+    │   ├── config/
+    │   │   └── index.js
+    │   ├── controllers/
+    │   │   ├── checkoutController.js
+    │   │   ├── reportController.js
+    │   │   └── userController.js
+    │   ├── database/
+    │   │   ├── connection.js
+    │   │   └── schema.js
+    │   ├── middlewares/
+    │   │   ├── adminAuth.js
+    │   │   └── errorHandler.js
+    │   ├── models/
+    │   │   ├── auditLogModel.js
+    │   │   ├── courseModel.js
+    │   │   ├── enrollmentModel.js
+    │   │   ├── paymentModel.js
+    │   │   ├── reportModel.js
+    │   │   └── userModel.js
+    │   ├── routes/
+    │   │   └── index.js
+    │   ├── services/
+    │   │   ├── checkoutService.js
+    │   │   ├── paymentGateway.js
+    │   │   └── reportService.js
+    │   ├── utils/
+    │   │   ├── asyncHandler.js
+    │   │   ├── errors.js
+    │   │   └── password.js
+    │   └── validators/
+    │       └── requestValidator.js
+    ├── .env.example
+    ├── api.http
+    ├── package.json
+    ├── package-lock.json
+    └── README.md
+    ~~~
+  ### 📂 **task-manager-api**
+  - *Estrutura Anterior*
+    ```
+    task-manager-api/
+    ├── models/
+    │   ├── __init__.py
+    │   ├── category.py
+    │   ├── task.py
+    │   └── user.py
+    ├── routes/
+    │   ├── __init__.py
+    │   ├── report_routes.py
+    │   ├── task_routes.py
+    │   └── user_routes.py
+    ├── services/
+    │   ├── __init__.py
+    │   └── notification_service.py
+    ├── utils/
+    │   ├── __init__.py
+    │   └── helpers.py
+    ├── app.py
+    ├── database.py
+    ├── README.md
+    ├── requirements.txt
+    └── seed.py
+    ```
+  - *Estrutura Atual*
+
+- ### Checklist de validação preenchido para cada projeto.
+  ### 📂 **code-smells-project**
+  ```markdown
+  ## Checklist de Validação
+
+  ### Fase 1 - Análise
+  - ✅ Linguagem detectada corretamente
+  - ✅ Framework detectado corretamente
+  - ✅ Domínio da aplicação descrito corretamente
+  - ✅ Número de arquivos analisados condiz com a realidade
+
+  ### Fase 2 - Auditoria
+  - ✅ Relatório segue o template definido nos arquivos de referência
+  - ✅ Cada finding tem arquivo e linhas exatos
+  - ✅ Findings ordenados por severidade (CRITICAL → LOW)
+  - ✅ Mínimo de 5 findings identificados
+  - ✅ Detecção de APIs deprecated incluída (se aplicável)
+  - ✅ Skill pausa e pede confirmação antes da Fase 3
+
+  ### Fase 3 - Refatoração
+  - ✅ Estrutura de diretórios segue padrão MVC
+  - ✅ Configuração extraída para módulo de config (sem hardcoded)
+  - ✅ Models criados para abstrair dados
+  - ✅ Views/Routes separadas para visualização ou roteamento
+  - ✅ Controllers concentram o fluxo da aplicação
+  - ✅ Error handling centralizado
+  - ✅ Entry point claro
+  - ✅ Aplicação inicia sem erros
+  - ✅ Endpoints originais respondem corretamente
+  ```
+  ### 📂 **ecommerce-api-legacy**
+  ```markdown
+  ## Checklist de Validação
+
+  ### Fase 1 - Análise
+  - ✅ Linguagem detectada corretamente
+  - ✅ Framework detectado corretamente
+  - ✅ Domínio da aplicação descrito corretamente
+  - ✅ Número de arquivos analisados condiz com a realidade
+
+  ### Fase 2 - Auditoria
+  - ✅ Relatório segue o template definido nos arquivos de referência
+  - ✅ Cada finding tem arquivo e linhas exatos
+  - ✅ Findings ordenados por severidade (CRITICAL → LOW)
+  - ✅ Mínimo de 5 findings identificados
+  - ✅ Detecção de APIs deprecated incluída (se aplicável)
+  - ✅ Skill pausa e pede confirmação antes da Fase 3
+
+  ### Fase 3 - Refatoração
+  - ✅ Estrutura de diretórios segue padrão MVC
+  - ✅ Configuração extraída para módulo de config (sem hardcoded)
+  - ✅ Models criados para abstrair dados
+  - ✅ Views/Routes separadas para visualização ou roteamento
+  - ✅ Controllers concentram o fluxo da aplicação
+  - ✅ Error handling centralizado
+  - ✅ Entry point claro
+  - ✅ Aplicação inicia sem erros
+  - ✅ Endpoints originais respondem corretamente
+  ```
+  ### 📂 **task-manager-api**
+  ```markdown
+  ## Checklist de Validação
+
+  ### Fase 1 - Análise
+  - ✅ Linguagem detectada corretamente
+  - ✅ Framework detectado corretamente
+  - ✅ Domínio da aplicação descrito corretamente
+  - ✅ Número de arquivos analisados condiz com a realidade
+
+  ### Fase 2 - Auditoria
+  - ✅ Relatório segue o template definido nos arquivos de referência
+  - ✅ Cada finding tem arquivo e linhas exatos
+  - ✅ Findings ordenados por severidade (CRITICAL → LOW)
+  - ✅ Mínimo de 5 findings identificados
+  - ✅ Detecção de APIs deprecated incluída (se aplicável)
+  - ✅ Skill pausa e pede confirmação antes da Fase 3
+
+  ### Fase 3 - Refatoração
+  - ✅ Estrutura de diretórios segue padrão MVC
+  - ✅ Configuração extraída para módulo de config (sem hardcoded)
+  - ✅ Models criados para abstrair dados
+  - ✅ Views/Routes separadas para visualização ou roteamento
+  - ✅ Controllers concentram o fluxo da aplicação
+  - ✅ Error handling centralizado
+  - ✅ Entry point claro
+  - ✅ Aplicação inicia sem erros
+  - ✅ Endpoints originais respondem corretamente
+  ```
+
+- ### Screenshots ou logs mostrando as aplicações rodando após refatoração.
+
+  ### 📂 **code-smells-project**
+  ![Evidência 1_1](screenshots\code-smells-1.png)
+  ![Evidência 1_2](screenshots\code-smells-2.png)
+  ![Evidência 1_3](screenshots\code-smells-3.png)
+  ![Evidência 1_4](screenshots\code-smells-4.png)
+  ### 📂 **ecommerce-api-legacy**
+  ![Evidência 2_0](screenshots\ecommerce-api-legacy-0.png)
+  ![Evidência 2_1](screenshots\ecommerce-api-legacy-1.png)
+  ![Evidência 2_2](screenshots\ecommerce-api-legacy-2.png)
+  ![Evidência 2_3](screenshots\ecommerce-api-legacy-3.png)
+  ![Evidência 2_4](screenshots\ecommerce-api-legacy-4.png)
+  ![Evidência 2_5](screenshots\ecommerce-api-legacy-5.png)
+  ### 📂 **task-manager-api**
+
+- ### Observações sobre como a skill se comportou em stacks diferentes.
 
 ## ⏯️ *Como Executar*
+### Pré-requisitos:
+  - Claude Code instalado.
+  - Python e o pip install -r requirements.txt do projeto, ou Node e npm install, conforme o projeto.
+  - Skill presente em `<projeto>/.claude/skills/refactor-arch/`.
+  - Context7 MCP opcional, para checar APIs deprecated.
+### Comandos:
+  ```bash
+  # Executar a skill no projeto 1
+  cd code-smells-project
+  claude "/refactor-arch"
+  ```
+  ```bash
+  # Executar a skill no projeto 2
+  cd ecommerce-api-legacy
+  claude "/refactor-arch"
+  ```
+  ```bash
+  # Executar a skill no projeto 3
+  cd task-manager-api
+  claude "/refactor-arch"
+  ```
+  Observação: Responder quando a Fase 2 perguntar.
 
-- Pré-requisitos (a ferramenta escolhida, instalada e configurada)
-- Comandos para executar a skill em cada projeto
-- Como validar que a refatoração funcionou
-
-```markdown
-## Checklist de Validação
-
-### Fase 1 - Análise
-- [ ] Linguagem detectada corretamente
-- [ ] Framework detectado corretamente
-- [ ] Domínio da aplicação descrito corretamente
-- [ ] Número de arquivos analisados condiz com a realidade
-
-### Fase 2 - Auditoria
-- [ ] Relatório segue o template definido nos arquivos de referência
-- [ ] Cada finding tem arquivo e linhas exatos
-- [ ] Findings ordenados por severidade (CRITICAL → LOW)
-- [ ] Mínimo de 5 findings identificados
-- [ ] Detecção de APIs deprecated incluída (se aplicável)
-- [ ] Skill pausa e pede confirmação antes da Fase 3
-
-### Fase 3 - Refatoração
-- [ ] Estrutura de diretórios segue padrão MVC
-- [ ] Configuração extraída para módulo de config (sem hardcoded)
-- [ ] Models criados para abstrair dados
-- [ ] Views/Routes separadas para visualização ou roteamento
-- [ ] Controllers concentram o fluxo da aplicação
-- [ ] Error handling centralizado
-- [ ] Entry point claro
-- [ ] Aplicação inicia sem erros
-- [ ] Endpoints originais respondem corretamente
-```
+### Como validar:
+  - A aplicação sobe sem erros.
+  - Os endpoints respondem com o mesmo status e formato do baseline, com pelo menos um caminho de sucesso e um de erro por recurso.
+  - O resumo da Fase 3 mostra [OK] nos itens de validação.
+  - Os achados tratados não aparecem mais ao reler o catálogo.
+  - O relatório existe em reports/audit-project-<N>.md.

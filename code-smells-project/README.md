@@ -25,15 +25,52 @@ A aplicação sobe em `http://127.0.0.1:5000`. O banco SQLite (`loja.db`) é cri
 ## Estrutura
 
 ```
-app.py            # composition root (create_app)
-config/           # settings (env) e constants (domínio)
-database/         # conexão por request, schema e seed
-models/           # acesso a dados (SQL parametrizado)
-services/         # regras de negócio (pedido, relatório, usuário, notificações)
-validators/       # validação de entrada
-controllers/      # orquestração HTTP por recurso
-routes/           # blueprints (só mapeamento)
-views/            # serializers (nunca expõem senha)
-middlewares/      # error handler central, auth admin
-exceptions.py     # exceções de domínio -> status HTTP
+code-smells-project/
+├── app.py                  # composition root (create_app)
+├── exceptions.py           # exceções de domínio -> status HTTP
+├── requirements.txt
+├── .env.example
+│
+├── config/                 # configuração
+│   ├── settings.py         #   variáveis de ambiente
+│   └── constants.py        #   constantes de domínio
+│
+├── database/               # persistência
+│   ├── connection.py       #   conexão por request
+│   └── schema.py           #   schema e seed
+│
+├── models/                 # M — acesso a dados (SQL parametrizado)
+│   └── produto, usuario, pedido, relatorio, sistema
+│
+├── views/                  # V — serializers (nunca expõem senha)
+│   └── serializers.py
+│
+├── controllers/            # C — orquestração HTTP por recurso
+│   └── produto, usuario, pedido, relatorio, sistema
+│
+├── routes/                 # blueprints (só mapeamento de URLs)
+│
+├── services/               # regras de negócio
+│   └── pedido, relatorio, usuario, notificacao
+│
+├── validators/             # validação de entrada
+│   └── produto, usuario, pedido
+│
+└── middlewares/            # transversais
+    ├── error_handler.py    #   error handler central
+    └── auth.py             #   auth admin
+```
+
+> O relatório de auditoria da skill fica na raiz do repositório: `../reports/audit-project-1.md`.
+
+### Fluxo de uma requisição
+
+```
+Request -> routes -> controllers -> validators
+                          |
+                          v
+                      services -> models -> database
+                          |
+                          v
+                       views -> Response
 ```

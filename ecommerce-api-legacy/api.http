@@ -26,6 +26,8 @@ Content-Type: application/json
 
 ### Relatório financeiro administrativo
 GET {{baseUrl}}/api/admin/financial-report
+x-admin-token: dev-admin-token
 
 ### Deletar usuário
 DELETE {{baseUrl}}/api/users/1
+x-admin-token: dev-admin-token

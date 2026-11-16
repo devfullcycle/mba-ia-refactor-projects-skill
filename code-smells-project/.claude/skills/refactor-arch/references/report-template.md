@@ -1,6 +1,6 @@
 # Template do Relatório de Auditoria (Fase 2)
 
-Use **exatamente** esta estrutura. Exiba no chat e salve em `reports/audit-project-<nome-do-projeto>.md`. Substitua tudo entre `<>`. Linhas devem ser reais (verifique no arquivo).
+Use **exatamente** esta estrutura. Exiba no chat e salve em `reports/audit-project-<N>.md` **na raiz do repositório principal** (não dentro do projeto auditado; `<N>` = 1, 2 ou 3 conforme as regras de "Onde salvar o relatório" no `SKILL.md`). Substitua tudo entre `<>`. Linhas devem ser reais (verifique no arquivo).
 
 ````markdown
 ================================
