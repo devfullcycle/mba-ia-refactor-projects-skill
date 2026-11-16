@@ -413,17 +413,17 @@ Neste projeto desafio, foi criada uma Skill que automatiza o processo de revisã
 - ### Screenshots ou logs mostrando as aplicações rodando após refatoração.
 
   ### 📂 **code-smells-project**
-  ![Evidência 1_1](screenshots\code-smells-1.png)
-  ![Evidência 1_2](screenshots\code-smells-2.png)
-  ![Evidência 1_3](screenshots\code-smells-3.png)
-  ![Evidência 1_4](screenshots\code-smells-4.png)
+  ![Evidência 1_1](./screenshots/code-smells-1.png)
+  ![Evidência 1_2](./screenshots/code-smells-2.png)
+  ![Evidência 1_3](./screenshots/code-smells-3.png)
+  ![Evidência 1_4](./screenshots/code-smells-4.png)
   ### 📂 **ecommerce-api-legacy**
-  ![Evidência 2_0](screenshots\ecommerce-api-legacy-0.png)
-  ![Evidência 2_1](screenshots\ecommerce-api-legacy-1.png)
-  ![Evidência 2_2](screenshots\ecommerce-api-legacy-2.png)
-  ![Evidência 2_3](screenshots\ecommerce-api-legacy-3.png)
-  ![Evidência 2_4](screenshots\ecommerce-api-legacy-4.png)
-  ![Evidência 2_5](screenshots\ecommerce-api-legacy-5.png)
+  ![Evidência 2_0](./screenshots/ecommerce-api-legacy-0.png)
+  ![Evidência 2_1](./screenshots/ecommerce-api-legacy-1.png)
+  ![Evidência 2_2](./screenshots/ecommerce-api-legacy-2.png)
+  ![Evidência 2_3](./screenshots/ecommerce-api-legacy-3.png)
+  ![Evidência 2_4](./screenshots/ecommerce-api-legacy-4.png)
+  ![Evidência 2_5](./screenshots/ecommerce-api-legacy-5.png)
   ### 📂 **task-manager-api**
 
 - ### Observações sobre como a skill se comportou em stacks diferentes.
