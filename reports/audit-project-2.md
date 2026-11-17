@@ -1,7 +1,7 @@
 # Relatório de Auditoria Arquitetural — ecommerce-api-legacy
 
 ================================
-ARCHITECTURE AUDIT REPORT
+ARCHITECTURE AUDIT REPORT (INITIAL)
 ================================
 Project: ecommerce-api-legacy
 Stack:   JavaScript (Node.js) + Express (^4.18.2) + SQLite3 (^5.1.6)
@@ -73,7 +73,61 @@ Impact: Dificuldade de legibilidade e manutenibilidade, dificultando a compreens
 Recommendation: Desestruturar os parâmetros de request com nomes semânticos e descritivos (`username`, `email`, `password`, `courseId`, `cardNumber`), e isolar regras de gateway de pagamento em um serviço dedicado com constantes bem definidas.
 
 ================================
-Total: 10 findings
+Total: 10 initial findings
 ================================
 
-Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]
+================================
+ARCHITECTURE AUDIT REPORT (POST-REFACTOR)
+================================
+Project: ecommerce-api-legacy
+Stack:   JavaScript (Node.js) + Express (^4.18.2) + SQLite3 (^5.1.6) (MVC Architecture)
+Files:   14 analyzed | ~420 lines of code
+
+## Summary
+CRITICAL: 0 | HIGH: 0 | MEDIUM: 0 | LOW: 0
+
+## Findings Status & Verification
+
+1. [CRITICAL] Exposed Hardcoded Sensitive Credentials & Unmasked Credit Card Logging (SEC-002)
+   Status: RESOLVIDO
+   Evidência: Chaves de API, senhas e portas foram extraídas para variáveis de ambiente via `src/config/config.js` com fallbacks seguros e arquivo de exemplo `.env.example`. Mascaramento de cartão de crédito implementado em `src/utils/security.js:maskCardNumber` garantindo conformidade com PCI-DSS ao imprimir no log apenas os últimos 4 dígitos (`**** **** **** 4444`).
+
+2. [CRITICAL] Monolithic God Class / God File (ARCH-001)
+   Status: RESOLVIDO
+   Evidência: A classe monolítica `AppManager.js` foi completamente decomposta na arquitetura MVC em camadas modulares: `src/config/`, `src/models/`, `src/controllers/`, `src/routes/` e `src/middlewares/`.
+
+3. [HIGH] Direct Database Operations in Controllers/Routes (ARCH-002)
+   Status: RESOLVIDO
+   Evidência: As operações SQL foram totalmente isoladas nos modelos `src/models/userModel.js`, `src/models/courseModel.js` e `src/models/paymentModel.js`. Os controladores (`checkoutController.js`, `reportController.js`, `userController.js`) atuam exclusivamente na orquestração de requisição/resposta HTTP.
+
+4. [HIGH] Broken Cryptography & Weak Insecure Password Hashing (SEC-003)
+   Status: RESOLVIDO
+   Evidência: A função insegura `badCrypto()` foi substituída pela implementação robusta com algoritmo criptográfico padrão PBKDF2 com Salt aleatório de 16 bytes e 10.000 iterações em `src/utils/security.js:hashPassword`. As senhas dos seeds e novos usuários agora utilizam este hash.
+
+5. [HIGH] Unsafe Deletion & Broken Referential Integrity (DATA-001)
+   Status: RESOLVIDO
+   Evidência: Em `src/models/database.js` foi habilitado `PRAGMA foreign_keys = ON;` com `ON DELETE CASCADE`. Adicionalmente, `UserModel.deleteById()` executa a limpeza coordenada de pagamentos vinculados às matrículas antes de deletar as matrículas e o usuário, impedindo registros órfãos.
+
+6. [HIGH] Uncontrolled Mutable Global State (ARCH-003)
+   Status: RESOLVIDO
+   Evidência: As variáveis globais mutáveis `globalCache` e `totalRevenue` foram eliminadas de `src/utils.js`. O estado do banco de dados é instanciado e gerenciado de forma segura via módulo `src/models/database.js`.
+
+7. [MEDIUM] N+1 Query Problem & Deeply Nested Asynchronous Callbacks (PERF-001)
+   Status: RESOLVIDO
+   Evidência: A cascata de consultas aninhadas em loop assíncrono no endpoint `/api/admin/financial-report` foi substituída em `PaymentModel.getFinancialReport()` por 1 única query SQL consolidada via `LEFT JOIN` entre cursos, matrículas, usuários e pagamentos, com agregação eficiente em memória.
+
+8. [MEDIUM] Inconsistent Error Handling & Hardcoded Plaintext Error Responses (CODE-002)
+   Status: RESOLVIDO
+   Evidência: Criado o middleware global `src/middlewares/errorHandler.js` registrado no Express, que captura erros assíncronos via `next(err)` e padroniza as respostas de erro JSON sem vazar stacktraces internos em ambiente de produção.
+
+9. [LOW] Deprecated Async Callback Pattern & Lack of Modern Async/Await (DEP-001)
+   Status: RESOLVIDO
+   Evidência: O acesso ao SQLite foi promisificado em `src/models/database.js`. Todos os controladores e modelos foram convertidos para a sintaxe moderna `async/await` com tratamento de exceções via blocos `try/catch`.
+
+10. [LOW] Magic Numbers, Cryptic Variable Names & Arbitrary Hardcoded Rules (CODE-004)
+    Status: RESOLVIDO
+    Evidência: Parâmetros crípticos foram substituídos por variáveis semânticas (`username`, `email`, `password`, `courseId`, `cardNumber`) com suporte a retrocompatibilidade. As regras de validação foram centralizadas nos controladores e models.
+
+================================
+Total: 0 remaining findings
+================================

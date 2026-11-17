@@ -1,7 +1,7 @@
 # Relatório de Auditoria Arquitetural — code-smells-project
 
 ================================
-ARCHITECTURE AUDIT REPORT
+ARCHITECTURE AUDIT REPORT (INITIAL)
 ================================
 Project: code-smells-project
 Stack:   Python 3.13 + Flask 3.1.1
@@ -94,4 +94,74 @@ Recommendation: Remover todos os imports não referenciados e higienizar os mód
 Total: 13 findings
 ================================
 
-Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]
+---
+
+# Re-Auditoria Pós-Refatoração (Validação Fase 2)
+
+================================
+ARCHITECTURE AUDIT REPORT (POST-REFACTOR)
+================================
+Project: code-smells-project
+Stack:   Python 3.13 + Flask 3.1.1 (MVC Architecture)
+Files:   26 analyzed | ~900 lines of code
+
+## Summary
+CRITICAL: 0 | HIGH: 0 | MEDIUM: 0 | LOW: 0
+
+## Findings Status & Verification
+
+1. [CRITICAL] SQL Injection & Arbitrary Query Execution (SEC-001)
+   Status: RESOLVIDO
+   Evidência: Consultas 100% parametrizadas com placeholders `?` em `models/produto_model.py`, `models/usuario_model.py`, `models/pedido_model.py`. Endpoint `/admin/query` desativado com HTTP 403 Forbidden em `views/system_routes.py`.
+
+2. [CRITICAL] Exposed Hardcoded Sensitive Credentials & Open Admin Endpoints (SEC-002)
+   Status: RESOLVIDO
+   Evidência: Credenciais extraídas para `config/settings.py` via `os.getenv()`. Rota `/health` sanitizada sem expor `secret_key` ou caminhos internos.
+
+3. [CRITICAL] Monolithic God File / Single Responsibility Violation (ARCH-001)
+   Status: RESOLVIDO
+   Evidência: Monólito decomposto na estrutura MVC completa (`config/`, `models/`, `controllers/`, `views/`, `middlewares/`).
+
+4. [HIGH] Direct Database Operations in Controllers (ARCH-002)
+   Status: RESOLVIDO
+   Evidência: Controllers apenas orquestram chamadas e invocam a camada Model. Nenhuma query SQL direta existe em controllers.
+
+5. [HIGH] Broken Cryptography & Plaintext Password Exposure (SEC-003)
+   Status: RESOLVIDO
+   Evidência: Hashing seguro com salt via `werkzeug.security` em `models/usuario_model.py`. O campo `senha` foi removido de todos os retornos de serialização de usuários.
+
+6. [HIGH] Uncontrolled Mutable Global State (ARCH-003)
+   Status: RESOLVIDO
+   Evidência: Removida a conexão global `db_connection`. Gerenciamento de conexão agora atrelado ao ciclo de vida da requisição via `g.db` com limpeza automática em `teardown_appcontext`.
+
+7. [HIGH] Unsafe Deletion & Broken Referential Integrity (DATA-001)
+   Status: RESOLVIDO
+   Evidência: `PRAGMA foreign_keys = ON` ativado. `ON DELETE CASCADE` implementado nas tabelas relacionais. Soft-delete seguro para produtos com itens em pedidos históricos.
+
+8. [MEDIUM] N+1 Query Problem & Nested Queries in Loops (PERF-001)
+   Status: RESOLVIDO
+   Evidência: `PedidoModel.listar_todos()` e `PedidoModel.listar_por_usuario()` utilizam `LEFT JOIN` único consolidando pedidos, itens e produtos em uma única query.
+
+9. [MEDIUM] High Cyclomatic Complexity & Deeply Nested Business Logic (CODE-001)
+   Status: RESOLVIDO
+   Evidência: Controllers refatorados com Guard Clauses lineares e validações antecipadas.
+
+10. [MEDIUM] Inconsistent Error Handling & Console-only Logging (CODE-002)
+    Status: RESOLVIDO
+    Evidência: Tratamento global centralizado em `middlewares/error_handler.py` com `logging.exception` estruturado.
+
+11. [LOW] Missing Explicit HTTP Methods & Inconsistent Routing (ARCH-004)
+    Status: RESOLVIDO
+    Evidência: Todas as rotas declaradas via Blueprints em `views/` com especificação explícita do verbo HTTP (`methods=["GET"]`, etc.).
+
+12. [LOW] Magic Numbers & Ad-Hoc Domain Literals (CODE-004)
+    Status: RESOLVIDO
+    Evidência: Categorias válidas, status de pedidos e faixas de desconto centralizadas em `config/settings.py`.
+
+13. [LOW] Dead Code & Unused Imports (CODE-003)
+    Status: RESOLVIDO
+    Evidência: Imports não utilizados removidos de todos os módulos.
+
+================================
+Total: 0 remaining findings
+================================

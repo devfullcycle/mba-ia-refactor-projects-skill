@@ -18,7 +18,6 @@ class PaymentModel {
     }
 
     static async createAuditLog(action) {
-        const now = new Date().toISOString();
         const result = await db.run(
             "INSERT INTO audit_logs (action, created_at) VALUES (?, datetime('now'))",
             [action]
