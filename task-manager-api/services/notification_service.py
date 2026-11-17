@@ -1,27 +1,34 @@
+import logging
 import smtplib
-from datetime import datetime
+from datetime import datetime, timezone
+from config.settings import Config
+
+logger = logging.getLogger(__name__)
 
 class NotificationService:
-    def __init__(self):
+    def __init__(self, host=None, port=None, user=None, password=None):
         self.notifications = []
-        self.email_host = 'smtp.gmail.com'
-        self.email_port = 587
-        self.email_user = 'taskmanager@gmail.com'
-        self.email_password = 'senha123'
+        self.email_host = host or Config.SMTP_HOST
+        self.email_port = port or Config.SMTP_PORT
+        self.email_user = user or Config.SMTP_USER
+        self.email_password = password or Config.SMTP_PASSWORD
 
     def send_email(self, to, subject, body):
-        try:
+        if not self.email_user or not self.email_password:
+            logger.warning("Credenciais SMTP não configuradas. Simulação de envio de e-mail.")
+            return True
 
-            server = smtplib.SMTP(self.email_host, self.email_port)
+        try:
+            server = smtplib.SMTP(self.email_host, self.email_port, timeout=10)
             server.starttls()
             server.login(self.email_user, self.email_password)
             message = f"Subject: {subject}\n\n{body}"
             server.sendmail(self.email_user, to, message)
             server.quit()
-            print(f"Email enviado para {to}")
+            logger.info(f"Email enviado com sucesso para {to}")
             return True
         except Exception as e:
-            print(f"Erro ao enviar email: {str(e)}")
+            logger.error(f"Erro ao enviar email para {to}: {str(e)}", exc_info=True)
             return False
 
     def notify_task_assigned(self, user, task):
@@ -32,7 +39,7 @@ class NotificationService:
             'type': 'task_assigned',
             'user_id': user.id,
             'task_id': task.id,
-            'timestamp': datetime.utcnow()
+            'timestamp': datetime.now(timezone.utc)
         })
 
     def notify_task_overdue(self, user, task):
@@ -41,8 +48,4 @@ class NotificationService:
         self.send_email(user.email, subject, body)
 
     def get_notifications(self, user_id):
-        result = []
-        for n in self.notifications:
-            if n['user_id'] == user_id:
-                result.append(n)
-        return result
+        return [n for n in self.notifications if n.get('user_id') == user_id]
