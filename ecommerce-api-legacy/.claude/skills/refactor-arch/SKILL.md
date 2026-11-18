@@ -115,13 +115,28 @@ quebrar nenhum endpoint existente.
    - entry point enxuto (composition root)
 4. Aplique as transformações do playbook para cada finding. **Preserve os
    contratos**: mesmos paths, métodos, formatos de request/response e status codes.
+   - **Aplique a `Recommendation` de cada finding por inteiro — nunca
+     parcialmente.** Se um finding aponta vários locais (ex.: serialização
+     duplicada em 3 rotas), corrija **todos**; não deixe um local legado para
+     trás. Se a recomendação é "serializer único", **todas** as rotas passam a
+     usá-lo (inclusive respostas de subconjunto — derive do serializer, não
+     reconstrua o dict na mão).
+   - **Código morto não "fica": ou é ligado ao fluxo, ou é removido.** Um service
+     que o relatório marcou como não utilizado deve ser efetivamente injetado e
+     chamado, ou excluído — nunca permanecer órfão.
 5. Crie um `.env.example` e remova segredos do código.
-6. **Valide** (obrigatório):
+6. **Verificação finding-a-finding (obrigatória antes de validar):** reabra o
+   relatório da Fase 2 e percorra **cada finding CRITICAL e HIGH**, confirmando
+   no código final onde a recomendação foi aplicada. Para cada um, aponte o
+   arquivo/linha resultante. Se encontrar qualquer aplicação parcial ou local
+   esquecido, **volte e complete antes de prosseguir**.
+7. **Valide** (obrigatório):
    - A aplicação **inicia sem erros**.
    - Cada endpoint original **responde** (teste com curl/httpie/requests os
      paths mapeados na Fase 1).
-   - Nenhum anti-pattern CRITICAL/HIGH do relatório permanece.
-7. Imprima o resultado:
+   - Nenhum anti-pattern CRITICAL/HIGH do relatório permanece — comprovado pela
+     verificação do passo 6.
+8. Imprima o resultado:
 
 ```
 ================================
@@ -138,7 +153,9 @@ PHASE 3: REFACTORING COMPLETE
 ```
 
 Se algum endpoint quebrar, **corrija antes de declarar sucesso**. A refatoração
-só está completa quando a validação passa de verdade.
+só está completa quando (a) a verificação finding-a-finding confirma que **todo**
+CRITICAL/HIGH foi integralmente resolvido e (b) a validação passa de verdade.
+Não declare "zero anti-patterns" sem ter conferido cada um no código final.
 
 ---
 

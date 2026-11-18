@@ -204,6 +204,11 @@ def validate_task(data, partial=False):
 ```
 A rota só faz: `cleaned, errors = validate_task(body)` → 400 se `errors`.
 
+> **Aplicação completa:** remova **todas** as cópias da validação (inclusive a
+> que vivia em `utils/helpers`). Se o relatório apontou um `*_service`/helper de
+> validação morto, **ligue-o ao fluxo** (passa a ser o validador oficial) ou
+> **remova-o** — não deixe código de validação órfão convivendo com a versão nova.
+
 ---
 
 ## T-10 · Serializer único (resolve AP-11)
@@ -216,7 +221,20 @@ chamado por ele:
 def to_dict(self):
     d = {...}; d["overdue"] = self.is_overdue(); return d
 ```
-Todas as rotas usam `task.to_dict()`.
+**Todas** as rotas usam `task.to_dict()` — sem exceção.
+
+> **Aplicação completa (erro comum):** não deixe **nenhuma** rota reconstruindo o
+> dicionário na mão "porque devolve só um subconjunto". Mesmo respostas parciais
+> devem derivar do serializer único:
+> ```python
+> # ERRADO — ainda duplica a serialização:
+> data = {"id": t.id, "title": t.title, "overdue": t.is_overdue(), ...}
+> # CERTO — deriva do serializer canônico:
+> data = t.to_dict()                       # resposta completa, ou
+> full = t.to_dict(); data = {k: full[k] for k in ("id", "title", "status", "overdue")}
+> ```
+> Depois de aplicar, faça um `grep` por montagem manual de dicts de entidade nas
+> rotas (`'id':`, `"id":`) e confirme que **zero** sobraram.
 
 ---
 
