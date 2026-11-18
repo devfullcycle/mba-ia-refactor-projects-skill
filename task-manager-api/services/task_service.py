@@ -2,11 +2,16 @@ from sqlalchemy.orm import joinedload
 
 from database import db
 from models.task import Task
+from models.user import User
 from utils.helpers import now_utc
 
 
 class TaskService:
     """Regra de negócio e consultas de tasks (antes espalhadas nas rotas)."""
+
+    def __init__(self, notifier=None):
+        # Notifier injetado (NotificationService) — efeito colateral opcional.
+        self._notifier = notifier
 
     def list(self):
         # joinedload evita o N+1 (user/category carregados numa query).
@@ -53,7 +58,16 @@ class TaskService:
             task.tags = data['tags']
         db.session.add(task)
         db.session.commit()
+        self._notify_assignment(task)
         return task
+
+    def _notify_assignment(self, task):
+        """Notifica o responsável quando a task é atribuída a um usuário."""
+        if not self._notifier or not task.user_id:
+            return
+        user = db.session.get(User, task.user_id)
+        if user:
+            self._notifier.notify_task_assigned(user, task)
 
     def update(self, task, data):
         for field in ('title', 'description', 'status', 'priority', 'user_id', 'category_id'):

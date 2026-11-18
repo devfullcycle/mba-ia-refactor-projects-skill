@@ -124,18 +124,8 @@ def get_user_tasks(user_id):
     if not user:
         return jsonify({'error': 'Usuário não encontrado'}), 404
 
-    result = []
-    for t in Task.query.filter_by(user_id=user_id).all():
-        result.append({
-            'id': t.id,
-            'title': t.title,
-            'description': t.description,
-            'status': t.status,
-            'priority': t.priority,
-            'created_at': str(t.created_at),
-            'due_date': str(t.due_date) if t.due_date else None,
-            'overdue': t.is_overdue(),
-        })
+    # Serializer único: deriva de Task.to_dict() (sem reconstruir o dict na mão).
+    result = [t.to_dict() for t in Task.query.filter_by(user_id=user_id).all()]
     return jsonify(result), 200
 
 

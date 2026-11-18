@@ -3,11 +3,13 @@ import logging
 from flask import Blueprint, request, jsonify
 
 from services.task_service import TaskService
+from services.notification_service import NotificationService
 from services.validators import validate_task_payload
 
 task_bp = Blueprint('tasks', __name__)
 logger = logging.getLogger(__name__)
-service = TaskService()
+# NotificationService agora é efetivamente usado (injetado no TaskService).
+service = TaskService(notifier=NotificationService())
 
 
 @task_bp.route('/tasks', methods=['GET'])
