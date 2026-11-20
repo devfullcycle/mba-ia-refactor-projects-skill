@@ -36,6 +36,8 @@ Paths are relative to this SKILL.md. Read a file fully the first time you need i
 1. **No file is modified, created, moved, or deleted before the user confirms at the end of Phase 2.** Phases 1–2 are read-only (running read-only shell commands such as `ls`, `grep`, `wc`, `cat`, a dependency listing, or booting the *original* app to capture a baseline is allowed).
 2. **Evidence over opinion.** Every finding cites `file:line` (or `file:start-end`) that you actually read. Never invent line numbers — re-open the file to confirm before writing the report.
 3. **Preserve the public contract.** Routes (method + path), request field names, response envelope shapes, status codes for the happy path, and the documented run command (`python app.py`, `npm start`, …) must keep working. The only allowed contract changes are security fixes (e.g., no longer returning password hashes, protecting admin endpoints) — each must be listed under "Intentional behavior changes" in the Phase 3 summary.
+   - **Auth guards are added only where they cannot break legitimate clients:** endpoints that are administrative by name/namespace (`/admin/*`, `.../admin/...`), that execute raw SQL, or that wipe data in bulk. Ordinary CRUD endpoints that were public stay public (requiring a token there would break every existing client); report the missing authorization as a finding and list it under "Recommended follow-ups" in the Phase 3 summary instead of locking it down.
+   - Privilege-escalation inputs can be neutralized without breaking the contract (e.g., ignore or reject a client-supplied `role: "admin"` on anonymous sign-up) — list it as an intentional change.
 4. **Adapt to the starting point.** A single-file monolith needs a full split; a partially layered project needs targeted moves (e.g., extract business logic from routes into controllers, centralize error handling) — do not rewrite what already complies with `mvc-guidelines.md`.
 5. **Stay inside the project directory.** Never touch the skill folder itself (`.claude/`), VCS metadata, lock files, virtualenvs, or `node_modules/`.
 6. Print the phase banners exactly as shown below so the run is easy to follow in the terminal.
@@ -155,6 +157,9 @@ PHASE 3: REFACTORING COMPLETE
 
 ## Intentional behavior changes
 <list, or "None">
+
+## Recommended follow-ups
+<findings deliberately not fully fixed to preserve the contract (e.g., auth on public CRUD), or "None">
 
 ## Validation
   ✓|✗ Application boots without errors (<command>)
