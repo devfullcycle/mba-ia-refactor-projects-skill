@@ -1,448 +1,384 @@
-# Criação de Skills — Refatoração Arquitetural Automatizada
+# Refatoração Arquitetural Automatizada com a skill `refactor-arch`
 
-Ao longo do curso você aprendeu o que são Skills e como elas permitem que um agente de IA atue como um especialista em tarefas específicas. Agora imagine o seguinte cenário: você herdou 3 projetos legados com problemas de arquitetura, segurança e qualidade de código. Revisar e corrigir tudo manualmente levaria dias.
+Entrega do desafio **"Criação de Skills — Refatoração Arquitetural Automatizada"** (MBA Engenharia de Software com IA — Full Cycle, módulo *Desenvolvimento de Software e Aplicações com IA*).
 
-Neste desafio, você vai criar uma Skill que automatiza esse processo — analisando, auditando e refatorando qualquer projeto para o padrão MVC, independente da tecnologia.
+Este repositório contém:
 
-## Objetivo
+- a skill **`refactor-arch`** para **Claude Code**, em `.claude/skills/refactor-arch/` dentro de cada um dos 3 projetos (cópias idênticas);
+- o **código refatorado** dos 3 projetos legados, resultado da Fase 3 da skill;
+- os **relatórios de auditoria** da Fase 2 em [`reports/`](reports/);
+- as **evidências de validação** (boot + comparação de endpoints antes × depois) em [`reports/validation/`](reports/validation/).
 
-Você deve entregar uma Skill capaz de:
+> O enunciado original está no repositório base: <https://github.com/devfullcycle/mba-ia-refactor-projects-skill>. O código legado intacto pode ser consultado no commit `6d1ce62`.
 
-- Analisar uma codebase detectando linguagem, framework e arquitetura atual
-- Identificar anti-patterns e code smells, classificando por severidade com arquivo e linha exatos
-- Gerar um relatório de auditoria estruturado com todos os achados
-- Refatorar o projeto para o padrão MVC (Model-View-Controller), eliminando os problemas encontrados
-- Validar o resultado garantindo que a aplicação continua funcionando após as mudanças
+## Sumário
 
-A skill deve ser agnóstica de tecnologia, funcionando com diferentes linguagens e frameworks.
+- [A) Análise Manual](#a-análise-manual)
+- [B) Construção da Skill](#b-construção-da-skill)
+- [C) Resultados](#c-resultados)
+- [D) Como Executar](#d-como-executar)
 
-## Contexto
+| Projeto | Stack | Domínio | Achados na auditoria | Endpoints preservados |
+|---|---|---|---|---|
+| `code-smells-project` | Python 3 + Flask 3.1.1 + sqlite3 | E-commerce (produtos, usuários, pedidos) | 22 (6 C · 5 H · 6 M · 5 L) | 19/19 |
+| `ecommerce-api-legacy` | Node.js + Express 4 + sqlite3 | LMS com checkout (cursos, matrículas, pagamentos) | 20 (5 C · 6 H · 5 M · 4 L) | 3/3 |
+| `task-manager-api` | Python 3 + Flask 3.0 + Flask-SQLAlchemy | Task Manager (tasks, usuários, categorias) | 18 (4 C · 3 H · 6 M · 5 L) | 22/22 |
 
-### Definição de Severidades
+---
 
-Para padronizar a sua auditoria e os relatórios gerados pela IA, utilize a seguinte escala de classificação baseada em problemas de MVC e SOLID:
+## A) Análise Manual
 
-- **CRITICAL:** Falhas graves de arquitetura ou segurança que impedem o funcionamento correto, expõem dados sensíveis (ex: credenciais hardcoded, SQL Injection) ou violam completamente a separação de responsabilidades (ex: "God Class" contendo banco de dados, lógicas complexas e roteamento no mesmo arquivo).
-- **HIGH:** Fortes violações do padrão MVC ou princípios SOLID que dificultam muito a manutenção e testes (ex: lógicas de negócio pesadas presas dentro de Controllers, forte acoplamento sem Injeção de Dependência, ou uso de estado global mutável em toda a aplicação).
-- **MEDIUM:** Problemas de padronização, duplicação de código ou gargalos de performance moderada (ex: Queries N+1 no banco de dados, uso inadequado de middlewares, validações ausentes nas rotas).
-- **LOW:** Melhorias de legibilidade, nomenclatura de variáveis ruins, ou "magic numbers" soltos pelo código.
+Feita **antes** de escrever a skill, lendo todo o código-fonte e subindo cada aplicação original com um smoke test de todos os endpoints (36 requisições no projeto 1, 10 no projeto 2, 43 no projeto 3). Os achados "provados em execução" estão marcados com 🔬.
 
-### Exemplo de Uso no CLI
+### Projeto 1 — `code-smells-project` (Python/Flask, API de E-commerce)
 
-```bash
-# Executar a skill no projeto com problemas
-cd code-smells-project
-claude "/refactor-arch"
+| # | Severidade | Problema | Local | Por que importa |
+|---|---|---|---|---|
+| 1 | CRITICAL | **SQL Injection** em praticamente todas as queries (concatenação de strings) | `models.py:28, 47-50, 57-61, 109-111, 126-129, 279-281, 289-297` … | 🔬 `POST /login` com `email = "' OR 1=1 --"` retornou **200 logado como Admin**; 🔬 criar produto `D'Agua` retornou **500** (`near "Agua": syntax error`). Bypass de autenticação e exfiltração/destruição de dados. |
+| 2 | CRITICAL | **Endpoints administrativos sem autenticação**, incluindo execução de **SQL arbitrário** | `app.py:47-57` (`/admin/reset-db`), `app.py:59-78` (`/admin/query`) | 🔬 `POST /admin/query {"sql": "SELECT ..."}` anônimo retornou dados. Qualquer pessoa pode ler senhas, apagar ou dropar o banco. |
+| 3 | CRITICAL | **Credenciais hardcoded e vazadas** | `app.py:7` (`SECRET_KEY`), `controllers.py:285-289` (`/health` devolve `secret_key`, `db_path`, `debug`) | 🔬 `GET /health` expõe a chave secreta para qualquer cliente. Segredo versionado no Git, sem rotação por ambiente. |
+| 4 | CRITICAL | **Senhas em texto puro** (armazenadas, comparadas no SQL e retornadas pela API) | `database.py:75-83`, `models.py:83, 100, 109-111, 126-129` | 🔬 `GET /usuarios` devolve o campo `senha` de todos os usuários. Um vazamento expõe todas as senhas. |
+| 5 | HIGH | **Pseudo-MVC / God module**: `models.py` mistura SQL + regras (estoque, desconto) de 4 domínios; `controllers.py` são views Flask com validação, "notificações" e acesso direto ao banco; `app.py` tem rotas com SQL | `models.py:1-314`, `controllers.py:188-220`, `app.py:47-78` | Nada é testável isoladamente; qualquer mudança afeta tudo (viola SRP). |
+| 6 | HIGH | **Estado global mutável**: conexão SQLite única global, compartilhada entre threads | `database.py:4-11` (`global db_connection`, `check_same_thread=False`) | Condições de corrida; o `commit` de uma requisição efetiva a transação inacabada de outra. |
+| 7 | HIGH | **Criação de pedido não atômica**: verifica estoque, insere pedido/itens e baixa estoque sem transação | `models.py:133-169` | Pedidos parciais e estoque negativo (oversell) sob concorrência ou erro no meio do fluxo. |
+| 8 | HIGH | **`debug=True` + `host=0.0.0.0` hardcoded** | `app.py:8, 88` | O debugger do Werkzeug exposto na rede permite execução remota de código. |
+| 9 | MEDIUM | **N+1 queries** na listagem de pedidos (1 + N pedidos + N×M itens) | `models.py:171-233` | O tempo de resposta cresce linearmente com o volume de pedidos. |
+| 10 | MEDIUM | **Tratamento de erro repetido e vazando detalhes**: `try/except` em todos os handlers devolvendo `str(e)`; nenhum error handler global | `controllers.py:10-12, 21-22, 60-62…` | Formato de erro inconsistente; mensagens internas vazam para o cliente. |
+| 11 | MEDIUM | **Validação ausente/duplicada**: create e update de produto copiados (o update não valida nome nem categoria); `login` sem body gera 500; `preco` sem checagem de tipo | `controllers.py:24-96, 169-170` | Entrada inválida vira 500 ou dado corrompido. |
+| 12 | LOW | **Magic numbers**: faixas de desconto `10000/0.1`, `5000/0.05`, `1000/0.02`; listas de status/categorias inline | `models.py:256-262`, `controllers.py:52, 242` | A regra de negócio fica escondida em literais. |
+| 13 | LOW | **`print` como log** (inclusive e-mail de usuário em login falho) | `controllers.py:8, 57, 179, 182, 208-210`, `app.py:56` | Sem níveis nem estrutura de log; vaza PII no stdout. |
+| 14 | LOW | **Imports não usados e nomes ruins** (`import os`, `import sqlite3` em models; `id` sombreando builtin; `cursor2/cursor3`) | `database.py:2`, `models.py:2`, `controllers.py:56, 160` | Ruído e risco de bugs sutis. |
+
+### Projeto 2 — `ecommerce-api-legacy` (Node.js/Express, LMS com checkout)
+
+| # | Severidade | Problema | Local | Por que importa |
+|---|---|---|---|---|
+| 1 | CRITICAL | **Credenciais de produção hardcoded** (`dbPass`, `paymentGatewayKey: "pk_live_..."`, `smtpUser`) | `src/utils.js:1-7` | Chave de gateway de pagamento **live** versionada no repositório. |
+| 2 | CRITICAL | **God class `AppManager`**: cria o banco, define schema, faz seed, registra rotas, processa pagamento e auditoria | `src/AppManager.js:4-139` | Zero separação de responsabilidades; impossível testar o checkout sem HTTP e banco reais. |
+| 3 | CRITICAL | **"Criptografia" caseira de senha** (`badCrypto`: base64 repetido e truncado em 10 caracteres) + senha padrão `"123456"` quando ausente | `src/utils.js:17-23`, `src/AppManager.js:68` | Reversível e com colisões (senhas com o mesmo prefixo geram o mesmo "hash"). |
+| 4 | CRITICAL | **Dados sensíveis em log**: número completo do cartão + chave do gateway | `src/AppManager.js:45` | 🔬 O log mostrou `Processando cartão 4111222233334444 na chave pk_live_...`. Violação de PCI-DSS. |
+| 5 | HIGH | **Callback hell + checkout não atômico**: matrícula, pagamento e auditoria em 4 níveis de callback, sem transação; o erro da auditoria é ignorado | `src/AppManager.js:37-77` | Uma falha no meio deixa matrícula sem pagamento; o fluxo é ilegível e frágil. |
+| 6 | HIGH | **Estado global mutável** (`globalCache`, `totalRevenue` exportados) | `src/utils.js:9-15` | Cache compartilhado e sem controle; vazamento de memória; acoplamento escondido. |
+| 7 | HIGH | **Endpoints administrativos/destrutivos sem autenticação e sem integridade referencial** | `src/AppManager.js:80` (relatório financeiro), `:131-137` (`DELETE /api/users/:id`) | 🔬 Após o delete, o relatório mostrou o aluno como `"Unknown"`, com pagamento órfão. Qualquer pessoa vê dados financeiros. |
+| 8 | MEDIUM | **N+1 no relatório financeiro** (1 + cursos + 2×matrículas queries) com contadores manuais | `src/AppManager.js:83-128` | 🔬 A ordem dos cursos na resposta **mudou entre duas chamadas** (race dos callbacks). Lento e não determinístico. |
+| 9 | MEDIUM | **Tratamento de erro inconsistente**: `err` ignorado em callbacks internos (`enrollments.length` em `undefined` derruba o processo), respostas em texto puro misturadas com JSON | `src/AppManager.js:92, 104, 106, 133` | Erros silenciosos ou crash do servidor; o cliente não tem contrato de erro. |
+| 10 | MEDIUM | **Regra de negócio e validação no handler**: "pagamento" simulado por `cc.startsWith("4")`, sem validar e-mail/cartão | `src/AppManager.js:35, 46` | A regra de pagamento fica presa na rota; não dá para trocar por um gateway real. |
+| 11 | LOW | **Nomes ruins**: `u, e, p, cid, cc`, campos `usr/eml/pwd/c_id`, `badCrypto`, `AppManager` | `src/AppManager.js:29-33` | Legibilidade e intenção escondidas. |
+| 12 | LOW | **Código morto / magic strings**: `totalRevenue` importado e nunca usado, `self = this`, `'PAID'/'DENIED'` literais, `sqlite3.verbose()` em produção | `src/AppManager.js:1-2, 26, 46`, `src/utils.js:10` | Ruído e literais duplicados. |
+
+### Projeto 3 — `task-manager-api` (Python/Flask + SQLAlchemy, Task Manager)
+
+| # | Severidade | Problema | Local | Por que importa |
+|---|---|---|---|---|
+| 1 | CRITICAL | **Segredos hardcoded**: `SECRET_KEY` e credenciais SMTP | `app.py:13`, `services/notification_service.py:7-10` | Senha de e-mail e chave da aplicação versionadas. |
+| 2 | CRITICAL | **Hash de senha com MD5 sem salt** | `models/user.py:27-32` | MD5 é quebrável por rainbow table em segundos. |
+| 3 | CRITICAL | **Hash da senha exposto na API** (`to_dict` inclui `password`) | `models/user.py:16-25` → `routes/user_routes.py:33, 85, 129, 209` | 🔬 `POST /users`, `GET /users/1` e `POST /login` devolvem o hash MD5. |
+| 4 | HIGH | **Autenticação falsa e nenhuma autorização**: token `'fake-jwt-token-' + id`; qualquer um cria usuário `admin` | `routes/user_routes.py:210, 52-72` | Não há controle de acesso real; escalada de privilégio trivial. |
+| 5 | HIGH | **Regra de negócio nas rotas** (validações, cálculo de atraso, estatísticas, relatórios); camada `services/` existe mas não é usada | `routes/task_routes.py:11-299`, `routes/report_routes.py:12-155` | A organização em pastas é só aparente: as rotas são "fat controllers" e não há camada de controller. |
+| 6 | HIGH | **`debug=True` hardcoded** | `app.py:34` | Debugger do Werkzeug exposto na rede = RCE. |
+| 7 | MEDIUM | **N+1 queries**: `User.query.get`/`Category.query.get` por task, `len(u.tasks)` por usuário, `count` por categoria, 9 `COUNT` separados no summary | `routes/task_routes.py:41-57`, `routes/user_routes.py:22`, `routes/report_routes.py:15-28, 56, 163` | Custo cresce com o número de tasks/usuários. |
+| 8 | MEDIUM | **APIs deprecated**: `Query.get()` (legacy no SQLAlchemy 2.x) e `datetime.utcnow()` (deprecated no Python 3.12+) | `routes/*.py` (13 ocorrências de `.query.get`), `models/*.py:14-16`, `routes/task_routes.py:31…` | 🔬 Confirmado com `python -W default`: `LegacyAPIWarning` e `DeprecationWarning`. Vão quebrar em upgrades. |
+| 9 | MEDIUM | **Duplicação**: a regra de "atrasada" foi reimplementada 6 vezes, embora `Task.is_overdue()` exista; validação de task duplicada entre create/update; `process_task_data` nunca é usado | `routes/task_routes.py:30-39, 71-80, 283-287`, `routes/user_routes.py:171-180`, `routes/report_routes.py:34-36, 132-135`, `utils/helpers.py:57-108` | As regras divergem com o tempo; cada correção tem de ser feita N vezes. |
+| 10 | MEDIUM | **Tratamento de erro**: `except:` sem tipo; nenhum handler global; `PUT /categories/<id>` sem body e `/tasks/search?priority=abc` geram 500 | `routes/task_routes.py:62, 137, 204, 236`, `routes/report_routes.py:196-197`, `routes/task_routes.py:261` | Erros reais são engolidos; entrada inválida vira 500. |
+| 11 | LOW | **Imports não usados** (`os, sys, json` em `app.py`; `json, os, sys, time` em `task_routes`; `hashlib, json` em `user_routes`; metade de `helpers.py`) | `app.py:7`, `routes/task_routes.py:7`, `routes/user_routes.py:6`, `utils/helpers.py:2-7` | Ruído e dependências enganosas. |
+| 12 | LOW | **Magic numbers e booleanos verbosos**: prioridade `1..5`, senha mínima `4`, listas de status inline; `if x: return True else: return False` | `routes/task_routes.py:110-114`, `routes/user_routes.py:64`, `models/user.py:34-38`, `models/task.py:38-48` | As constantes de `utils/helpers.py:110-116` existem mas não são usadas. |
+| 13 | LOW | **`print` como log** | `routes/task_routes.py:149, 219, 234`, `routes/user_routes.py:83, 89, 147` | Sem nível nem estrutura de log. |
+
+---
+
+## B) Construção da Skill
+
+### Estrutura
+
+```
+.claude/skills/refactor-arch/
+├── SKILL.md                              # o "prompt": papel, regras globais e as 3 fases
+└── references/
+    ├── project-analysis.md               # Fase 1 — heurísticas de linguagem, framework, banco, domínio, arquitetura e inventário de rotas
+    ├── anti-patterns-catalog.md          # Fase 2 — 23 anti-patterns (sinais de detecção + severidade) + tabela de APIs deprecated
+    ├── audit-report-template.md          # Fase 2 — formato exato do relatório (com exemplo bom × ruim)
+    ├── mvc-guidelines.md                 # Fase 3 — camadas, responsabilidades, regra de dependência, árvores-alvo por stack
+    ├── refactoring-playbook.md           # Fase 3 — 17 transformações com código antes/depois (Python e JS)
+    └── validation-protocol.md            # Fase 3 — baseline, boot, comparação de endpoints, re-scan, limpeza
 ```
 
-```
-================================
-PHASE 1: PROJECT ANALYSIS
-================================
-Language:      Python
-Framework:      Flask 3.1.1
-Dependencies:  flask-cors
-Domain:        E-commerce API (produtos, pedidos, usuários)
-Architecture:  Monolítica — tudo em 4 arquivos, sem separação de camadas
-Source files:  4 files analyzed
-DB tables:     produtos, usuarios, pedidos, itens_pedido
-================================
-```
-
-```
-================================
-ARCHITECTURE AUDIT REPORT
-================================
-Project: code-smells-project
-Stack:   Python + Flask
-Files:   4 analyzed | ~800 lines of code
-
-## Summary
-CRITICAL: 4 | HIGH: 5 | MEDIUM: 2 | LOW: 3
-
-## Findings
-
-### [CRITICAL] God Class / God Method
-File: models.py:1-350
-Description: Arquivo único contém toda lógica de negócio, queries SQL, validação e formatação para 4 domínios diferentes.
-Impact: Impossível testar em isolamento, qualquer mudança afeta tudo.
-Recommendation: Separar em models e controllers por domínio.
-
-### [CRITICAL] Hardcoded Credentials
-File: app.py:8
-Description: SECRET_KEY hardcoded como 'minha-chave-super-secreta-123'
-...
-
-================================
-Total: 14 findings
-================================
-
-Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]
-> y
-```
-
-```
-[... refatoração executada ...]
-
-================================
-PHASE 3: REFACTORING COMPLETE
-================================
-## New Project Structure
-src/
-├── config/settings.py
-├── models/
-│   ├── produto_model.py
-│   └── usuario_model.py
-├── views/
-│   └── routes.py
-├── controllers/
-│   ├── produto_controller.py
-│   └── pedido_controller.py
-├── middlewares/error_handler.py
-└── app.py (composition root)
-
-## Validation
-  ✓ Application boots without errors
-  ✓ All endpoints respond correctly
-  ✓ Zero anti-patterns remaining
-================================
-```
-
-## Tecnologias obrigatórias
-
-- **Ferramenta:** uma das três opções abaixo (não são aceitas outras ferramentas):
-  - Claude Code
-  - Gemini CLI
-  - OpenAI Codex
-- **Recurso:** Custom Skills (ou o equivalente na ferramenta escolhida)
-- **Formato dos arquivos de referência:** Markdown
-- **Projetos-alvo:** Python/Flask (2 projetos) e Node.js/Express (1 projeto) (fornecidos no repositório base)
-
-> **Nota sobre a ferramenta:** Os exemplos deste documento usam o Claude Code (`.claude/skills/`) como referência, pois é a ferramenta utilizada no curso. Se você optar por Gemini CLI ou Codex, adapte o nome da pasta e o comando de invocação conforme a convenção dela — o conceito de skill e a estrutura interna (SKILL.md + arquivos de referência) permanecem os mesmos.
-
-## Requisitos
-
-### 1. Análise Manual dos Projetos
-
-Antes de criar a skill, você deve entender os problemas que ela vai resolver.
-
-**Tarefas:**
-
-- Analisar o projeto `code-smells-project/` (Python/Flask — API de E-commerce)
-- Analisar o projeto `ecommerce-api-legacy/` (Node.js/Express — LMS API com fluxo de checkout)
-- Analisar o projeto `task-manager-api/` (Python/Flask — API de Task Manager)
-
-Para cada projeto, identificar e documentar no mínimo 5 problemas, incluindo pelo menos:
-
-- 1 de severidade CRITICAL ou HIGH
-- 2 de severidade MEDIUM
-- 2 de severidade LOW
-
-Documentar os achados na seção "Análise Manual" do seu `README.md`
-
-> **Dica:** Não precisa encontrar todos os problemas — foque nos que têm maior impacto arquitetural. Use os projetos como insumo para entender quais padrões sua skill precisa detectar.
-
-> **Por que 3 projetos?** Dois são Python/Flask (com níveis de organização diferentes) e um é Node.js/Express. Sua skill precisa funcionar nos 3 para provar que é verdadeiramente agnóstica de tecnologia — lidando tanto com código completamente desestruturado quanto com projetos que já possuem alguma separação de camadas.
-
-### 2. Criação da Skill
-
-Agora que você conhece os problemas, crie uma skill que os detecte, gere um relatório de auditoria e corrija automaticamente.
-
-**Tarefas:**
-
-Criar a skill dentro do projeto `code-smells-project/` e implementar o SKILL.md com 3 fases sequenciais:
-
-- **Fase 1 — Análise:** Detectar stack, mapear arquitetura atual, imprimir resumo
-- **Fase 2 — Auditoria:** Cruzar código contra catálogo de anti-patterns, gerar relatório, pedir confirmação
-- **Fase 3 — Refatoração:** Reestruturar para o padrão MVC, validar que funciona
-
-Criar arquivos de referência em Markdown que forneçam à skill o conhecimento necessário para executar as 3 fases. Os arquivos devem cobrir **obrigatoriamente** as seguintes áreas de conhecimento:
-
-| Área de conhecimento | O que deve conter |
+| Área de conhecimento exigida | Arquivo |
 |---|---|
-| Análise de projeto | Heurísticas para detecção de linguagem, framework, banco de dados e mapeamento de arquitetura |
-| Catálogo de anti-patterns | Anti-patterns com sinais de detecção e classificação de severidade |
-| Template de relatório | Formato padronizado do relatório de auditoria (Fase 2) |
-| Guidelines de arquitetura | Regras do padrão MVC alvo (camadas Models, Views/Routes e Controllers, responsabilidades de cada uma) |
-| Playbook de refatoração | Padrões concretos de transformação para cada anti-pattern (com exemplos de código) |
+| Análise de projeto | `project-analysis.md` |
+| Catálogo de anti-patterns | `anti-patterns-catalog.md` |
+| Template de relatório | `audit-report-template.md` |
+| Guidelines de arquitetura | `mvc-guidelines.md` |
+| Playbook de refatoração | `refactoring-playbook.md` |
+| *(extra)* Protocolo de validação | `validation-protocol.md` |
 
-> **Nota:** Você tem liberdade para organizar os arquivos de referência como preferir — pode usar os nomes e a quantidade de arquivos que fizer sentido para sua skill. O importante é que todas as 5 áreas de conhecimento estejam cobertas. O nome da skill (`refactor-arch`) e o arquivo `SKILL.md` são obrigatórios e não devem ser alterados. O path da skill segue a convenção da ferramenta escolhida (no Claude Code, por exemplo, é `.claude/skills/refactor-arch/`).
+### Decisões de design
 
-**Requisitos da skill:**
+1. **`SKILL.md` é o roteiro, as referências são o conhecimento.** O `SKILL.md` (~170 linhas) só diz *o que fazer e em que ordem*. Cada fase indica quais arquivos ler naquele momento, o que mantém o contexto enxuto (*progressive disclosure*) e permite evoluir o catálogo sem mexer no fluxo.
+2. **Banners fixos de saída** (`PHASE 1: PROJECT ANALYSIS`, `ARCHITECTURE AUDIT REPORT`, `PHASE 3: REFACTORING COMPLETE`) idênticos aos do enunciado. Assim cada execução pode ser comparada lado a lado.
+3. **Portão de confirmação explícito.** A regra global 1 proíbe qualquer escrita antes do "y". A única exceção é o próprio arquivo do relatório, que é criado e nunca altera código. O agente usa `AskUserQuestion` quando disponível e, se não estiver, imprime `Proceed with refactoring (Phase 3)? [y/n]` e encerra o turno. `disable-model-invocation: true` impede que a skill seja disparada automaticamente: ela só roda via `/refactor-arch`.
+4. **Evidência acima de opinião.** Cada achado exige `arquivo:linha` reaberto antes de ir para o relatório. Um *grep hit* é só candidato e precisa ser confirmado lendo o código. Há *sanity gates* antes de imprimir: contagens batem com o resumo e todo achado tem linha real.
+5. **Contrato público como invariante.** As rotas, os campos de request, o envelope de resposta e o comando de execução precisam continuar funcionando. Toda mudança de comportamento tem de ser um conserto de segurança e aparece em *Intentional behavior changes*.
+6. **Validação baseada em baseline.** Antes de mudar qualquer arquivo, a Fase 3 sobe a aplicação **original** e grava status + chaves de cada endpoint. Depois da refatoração, repete as mesmas chamadas e compara. Isso transforma "a aplicação continua funcionando" em algo verificável.
+7. **Argumentos opcionais**: `--report <path>` (onde salvar o relatório) e `--audit-only` (só Fases 1–2).
 
-- Deve ser agnóstica de tecnologia — deve funcionar corretamente nos 3 projetos fornecidos, independente da stack ou nível de organização
-- O catálogo de anti-patterns deve conter no mínimo 8 anti-patterns com severidade distribuída (CRITICAL, HIGH, MEDIUM, LOW)
-- O catálogo deve incluir detecção de APIs deprecated — identificar uso de APIs obsoletas e recomendar o equivalente moderno
-- O playbook deve ter no mínimo 8 padrões de transformação com exemplos de código antes/depois
-- A Fase 2 deve pausar e pedir confirmação antes de modificar qualquer arquivo
-- A Fase 3 deve validar o resultado (boot da aplicação + endpoints funcionando)
+### Catálogo de anti-patterns (23 entradas)
 
-### 3. Execução da Skill
+| Severidade | ID | Anti-pattern | Por que entrou |
+|---|---|---|---|
+| CRITICAL | AP-01 | Segredos/credenciais hardcoded | Presente nos 3 projetos (`SECRET_KEY`, `pk_live_…`, senha SMTP) |
+| CRITICAL | AP-02 | SQL Injection (concatenação/interpolação) | Projeto 1 inteiro; provado com bypass de login |
+| CRITICAL | AP-03 | God Class / God Module | `models.py` (P1) e `AppManager` (P2) |
+| CRITICAL | AP-04 | Endpoint administrativo/destrutivo sem proteção | `/admin/query` com SQL arbitrário (P1), relatório financeiro (P2), escalada de `role` (P3) |
+| CRITICAL | AP-05 | Armazenamento inseguro de senha | Texto puro (P1), base64 caseiro (P2), MD5 (P3) |
+| CRITICAL | AP-06 | Exposição de dados sensíveis (respostas e logs) | Senha na API (P1/P3), cartão + chave no log (P2) |
+| HIGH | AP-07 | Regra de negócio na camada HTTP (*fat route*) | Os 3 projetos — inclusive o P3 "organizado" |
+| HIGH | AP-08 | Acoplamento forte / sem DI / sem composition root | Os 3 projetos |
+| HIGH | AP-09 | Estado global mutável | Conexão global (P1), `globalCache` (P2) |
+| HIGH | AP-10 | Escrita multi-etapa não atômica / integridade referencial | Pedido (P1), checkout e delete de usuário (P2) |
+| HIGH | AP-11 | Callback hell | Específico de Node (P2) — mostra que o catálogo cobre idiomas de cada stack |
+| HIGH | AP-12 | Configuração insegura hardcoded (`debug=True`, CORS `*`, token falso) | Os 3 projetos |
+| MEDIUM | AP-13 | Queries N+1 | Os 3 projetos |
+| MEDIUM | AP-14 | Validação ausente/duplicada | Os 3 projetos (gerando 500 e até crash no P2) |
+| MEDIUM | AP-15 | Duplicação (DRY) | Regra de "atrasada" reimplementada 6× no P3 |
+| MEDIUM | AP-16 | Tratamento de erro inconsistente / `except:` | Os 3 projetos |
+| MEDIUM | AP-17 | **APIs deprecated** — tabela por ecossistema com o equivalente moderno | `Query.get`, `datetime.utcnow` (P3); driver sqlite3 só com callbacks (P2) |
+| MEDIUM | AP-18 | Efeitos colaterais/infra no lugar errado | Schema/seed no import, "e-mails" com `print` |
+| LOW | AP-19 | Magic numbers/strings | Faixas de desconto, prioridades, status |
+| LOW | AP-20 | Nomes ruins | `u, e, p, cc, cid`, `badCrypto` |
+| LOW | AP-21 | Imports/código morto | `import os, sys, json` não usados |
+| LOW | AP-22 | `print`/`console.log` como log | Os 3 projetos |
+| LOW | AP-23 | Condicionais verbosos / código não idiomático | `if x: return True else: return False` |
 
-Execute sua skill nos 3 projetos e valide que ela funciona em todas as stacks.
+Cada entrada traz **sinais de detecção acionáveis** (regex de `grep` + o que confirmar lendo o código), o motivo do problema e a transformação do playbook que o corrige. O catálogo termina com um *grep pack* pronto para copiar e colar.
 
-#### Projeto 1 — code-smells-project (Python/Flask)
+O **playbook** tem 17 transformações (T-01 a T-17), todas com código **antes/depois** em Python e/ou JavaScript: extrair config, parametrizar queries, dividir God class, mover regra para controller, composition root, eliminar estado global, error handler central, eliminar N+1, hash de senha (com upgrade transparente do hash legado), remover dados sensíveis, transações, callback → async/await, substituir APIs deprecated, validação centralizada, constantes, higiene e proteção de endpoints admin.
 
-Invocar a skill no Claude Code:
+### Como a skill ficou agnóstica de tecnologia
 
-```bash
-claude "/refactor-arch"
-```
+- **Nada no `SKILL.md` cita Flask, Express ou nomes de arquivo dos projetos.** A Fase 1 detecta a stack, e as referências trazem seções por ecossistema (Python, Node, e uma regra "qualquer outra stack" com o mapeamento para Go/Spring).
+- **Heurísticas por sinal, não por nome**: a stack vem do manifesto (`requirements.txt`, `package.json`, `go.mod`…), o banco vem do driver/ORM e o domínio vem de tabelas + rotas + seed.
+- **Escala de maturidade arquitetural** (Monolithic / Pseudo-layered / Partially layered / Layered) com uma estratégia de refatoração diferente para cada nível. É isso que permite tratar o monolito do P2 e o projeto já organizado do P3 com a mesma skill.
+- **Árvores-alvo por stack** no `mvc-guidelines.md`, com a mesma regra de dependência para todas (`views → controllers → models/services`).
+- **Contrato preservado por observação, não por suposição**: o baseline HTTP funciona igual para qualquer stack que exponha HTTP.
+- **Prova**: a mesma pasta, copiada byte a byte (`diff -r` sem diferenças), rodou nos 3 projetos.
 
-> **Nota:** O comando acima é o exemplo com Claude Code. Se você estiver usando Gemini CLI ou Codex, utilize o comando equivalente para invocar uma skill na sua ferramenta.
+### Desafios encontrados e como resolvi
 
-- Verificar que a Fase 1 detecta corretamente a stack e imprime o resumo
-- Verificar que a Fase 2 encontra no mínimo 5 dos problemas documentados na sua análise manual
-- Confirmar a execução da Fase 3
-- Verificar que a Fase 3:
-  - Cria a estrutura de diretórios baseada em MVC
-  - A aplicação inicia sem erros
-  - Os endpoints originais continuam respondendo
-- Salvar o relatório de auditoria (output da Fase 2) em `reports/audit-project-1.md`
-- Commitar o código refatorado do projeto no repositório
+| # | Desafio | Solução |
+|---|---|---|
+| 1 | **Ordenação dentro da mesma severidade.** O template pedia "por arquivo e linha", mas o modelo ordenou por impacto, o que é mais útil para quem lê | O template passou a pedir "maior impacto primeiro; empate por arquivo/linha" |
+| 2 | **Auth guards quebrando o contrato.** O catálogo recomenda proteger rotas destrutivas, mas no P3 isso trancaria todo o CRUD de usuários/tasks atrás de token, e o enunciado exige que *todos os endpoints continuem respondendo* | Regra global 3 refinada (commit `d890df6`): guards apenas em rotas administrativas por nome, de SQL bruto ou de *wipe* em massa. Escaladas de privilégio podem ser neutralizadas sem quebrar o contrato (`role: "admin"` anônimo → 403). O resto vai para **Recommended follow-ups**. *Observação:* o P2 rodou antes desse ajuste, então seu `DELETE /api/users/:id` ficou atrás do `X-Admin-Token`. Mantive assim e registro aqui: pela regra atual, ele iria para follow-ups |
+| 3 | **Falso positivo.** Na auditoria do P3, a skill marcou AP-10 (FK órfã ao apagar categoria) | O baseline da Fase 3 mostrou que o backref do SQLAlchemy já zera `category_id`. A própria skill retirou o achado e anotou a correção no relatório (19 → 18 achados). É a "evidência acima de opinião" funcionando |
+| 4 | **Servidor zumbi na validação.** O reloader do Flask em `debug=True` deixa um processo filho segurando a porta depois do `pkill` | O `validation-protocol.md` manda encerrar **por porta** (`lsof -tiTCP:<port>`), nunca por nome de processo |
+| 5 | **Execução headless.** Rodei a skill de verdade via `claude -p` (ver seção D). Uma regra `Write(path)` em `--allowedTools` não cobre escrita de arquivo (precisa ser `Edit(path)`) | Uso de `--permission-mode acceptEdits` + allowlist de comandos Bash; a confirmação da Fase 2 é dada com `claude -p -c "y"` |
+| 6 | **Skill atualizada no meio de uma sessão.** A sessão continuada do P3 tinha carregado o `SKILL.md` antigo | A resposta de confirmação pediu para reler o `SKILL.md` antes da Fase 3 |
+| 7 | **Bugs que eu não tinha visto.** A skill achou um crash que escapou da minha análise manual: no P2, `"card": 4111` (número em vez de string) derruba o processo inteiro (`cc.startsWith is not a function`) | Classificado como AP-14 elevado para HIGH, e corrigido na Fase 3 (agora retorna 400) |
 
-#### Projeto 2 — ecommerce-api-legacy (Node.js/Express)
+---
 
-Prove que sua skill é reutilizável em outro projeto de backend, mas com stack diferente.
+## C) Resultados
 
-- Copiar a pasta `.claude/skills/refactor-arch/` para dentro de `ecommerce-api-legacy/`
-- Invocar a skill:
+### Resumo das auditorias (Fase 2)
 
-```bash
-cd ../ecommerce-api-legacy
-claude "/refactor-arch"
-```
+| Projeto | CRITICAL | HIGH | MEDIUM | LOW | Total | APIs deprecated | Relatório |
+|---|---|---|---|---|---|---|---|
+| 1 — code-smells-project | 6 | 5 | 6 | 5 | **22** | nenhuma (verificado com `python -W default`) | [audit-project-1.md](reports/audit-project-1.md) |
+| 2 — ecommerce-api-legacy | 5 | 6 | 5 | 4 | **20** | driver sqlite3 só com callbacks; `.verbose()` em produção | [audit-project-2.md](reports/audit-project-2.md) |
+| 3 — task-manager-api | 4 | 3 | 6 | 5 | **18** | `Query.get()` (16×), `datetime.utcnow()` (20+×) | [audit-project-3.md](reports/audit-project-3.md) |
 
-- Verificar que as 3 fases executam corretamente neste projeto
-- Salvar o relatório em `reports/audit-project-2.md`
-- Commitar o código refatorado do projeto no repositório
+**Cobertura da análise manual**: todos os problemas da seção A aparecem nos relatórios da skill (14/14 no P1, 12/12 no P2, 13/13 no P3), bem acima do mínimo de 5 por projeto. A skill ainda achou problemas extras, como o crash do P2 com cartão numérico, o oversell por quantidade negativa no P1 e a ausência de devolução de estoque no cancelamento.
 
-#### Projeto 3 — task-manager-api (Python/Flask)
+### Estrutura antes × depois
 
-Agora o teste com um projeto Python/Flask que já possui alguma organização de camadas (models, routes, services, utils).
-
-- Copiar a pasta `.claude/skills/refactor-arch/` para dentro de `task-manager-api/`
-- Invocar a skill:
-
-```bash
-cd ../task-manager-api
-claude "/refactor-arch"
-```
-
-- Verificar que:
-  - A Fase 1 detecta corretamente Python/Flask como stack e identifica o domínio de Task Manager
-  - A Fase 2 identifica problemas mesmo em um projeto parcialmente organizado
-  - A Fase 3 melhora a estrutura sem quebrar a aplicação (todos os endpoints devem continuar respondendo)
-- Salvar o relatório em `reports/audit-project-3.md`
-- Commitar o código refatorado do projeto no repositório
-
-> **Nota:** Este projeto já possui alguma separação de camadas, mas isso não significa que a arquitetura está adequada. A skill deve identificar tanto problemas de código (segurança, performance, qualidade) quanto oportunidades de melhoria arquitetural. Se houver mudanças estruturais necessárias, a skill deve propô-las e executá-las.
-
-#### Validação
-
-Para cada projeto refatorado, valide o seguinte checklist:
-
-```markdown
-## Checklist de Validação
-
-### Fase 1 — Análise
-- [ ] Linguagem detectada corretamente
-- [ ] Framework detectado corretamente
-- [ ] Domínio da aplicação descrito corretamente
-- [ ] Número de arquivos analisados condiz com a realidade
-
-### Fase 2 — Auditoria
-- [ ] Relatório segue o template definido nos arquivos de referência
-- [ ] Cada finding tem arquivo e linhas exatos
-- [ ] Findings ordenados por severidade (CRITICAL → LOW)
-- [ ] Mínimo de 5 findings identificados
-- [ ] Detecção de APIs deprecated incluída (se aplicável)
-- [ ] Skill pausa e pede confirmação antes da Fase 3
-
-### Fase 3 — Refatoração
-- [ ] Estrutura de diretórios segue padrão MVC
-- [ ] Configuração extraída para módulo de config (sem hardcoded)
-- [ ] Models criados para abstrair dados
-- [ ] Views/Routes separadas para visualização ou roteamento
-- [ ] Controllers concentram o fluxo da aplicação
-- [ ] Error handling centralizado
-- [ ] Entry point claro
-- [ ] Aplicação inicia sem erros
-- [ ] Endpoints originais respondem corretamente
-```
-
-> **Dica:** Se a skill não detectou problemas suficientes ou a refatoração falhou, ajuste os arquivos de referência e execute novamente. É normal precisar de 2-4 iterações.
-
-## Entregável
-
-Repositório público no GitHub (fork do repositório base) contendo:
-
-- Skill completa em `.claude/skills/refactor-arch/` (dentro dos 3 projetos)
-- Código refatorado dos 3 projetos (resultado da execução da Fase 3, commitado no repositório)
-- Relatórios de auditoria em `reports/` (3 arquivos)
-- `README.md` atualizado
-
-### Estrutura do repositório
-
-Faça um fork do repositório base contendo os três projetos com code smells.
-
-> **Nota:** A estrutura abaixo usa Claude Code como exemplo (`.claude/skills/`). Se estiver usando outra ferramenta, adapte os caminhos conforme a convenção dela.
+**Projeto 1 — code-smells-project** (Pseudo-layered → MVC)
 
 ```
-desafio-skills/
-├── README.md                              # Sua documentação
-│
-├── code-smells-project/                   # Projeto 1 — Python/Flask (API de E-commerce)
-│   ├── .claude/
-│   │   └── skills/
-│   │       └── refactor-arch/             # ← SUA SKILL AQUI
-│   │           ├── SKILL.md
-│   │           └── (arquivos de referência)
-│   ├── app.py
-│   ├── controllers.py
-│   ├── models.py
-│   ├── database.py
-│   └── requirements.txt
-│
-├── ecommerce-api-legacy/                  # Projeto 2 — Node.js/Express (LMS API com checkout)
-│   ├── .claude/
-│   │   └── skills/
-│   │       └── refactor-arch/             # ← CÓPIA DA SKILL
-│   │           └── ...
-│   ├── src/
-│   │   ├── app.js
-│   │   ├── AppManager.js
-│   │   └── utils.js
-│   ├── api.http
-│   └── package.json
-│
-├── task-manager-api/                      # Projeto 3 — Python/Flask (API de Task Manager)
-│   ├── .claude/
-│   │   └── skills/
-│   │       └── refactor-arch/             # ← CÓPIA DA SKILL
-│   │           └── ...
-│   ├── app.py
-│   ├── database.py
-│   ├── seed.py
-│   ├── requirements.txt
-│   ├── models/
-│   ├── routes/
-│   ├── services/
-│   └── utils/
-│
-└── reports/                               # Relatórios gerados
-    ├── audit-project-1.md                 # Saída da Fase 2 no projeto 1
-    ├── audit-project-2.md                 # Saída da Fase 2 no projeto 2
-    └── audit-project-3.md                 # Saída da Fase 2 no projeto 3
+ANTES                         DEPOIS
+app.py        (rotas + SQL)   app.py                        # entry point: python app.py
+controllers.py (views+regra)  src/
+models.py     (SQL + regra)   ├── app.py                    # create_app(): composition root
+database.py   (conn global)   ├── config/settings.py        # env vars (.env.example)
+                              ├── models/      database · produto · usuario · pedido · relatorio · admin
+                              ├── controllers/ errors · validators · produto · usuario · pedido · relatorio · sistema · admin
+                              ├── views/       produto · usuario · pedido · relatorio · sistema · admin (Blueprints)
+                              ├── services/    notification_service · password_hasher
+                              └── middlewares/ error_handler · auth (X-Admin-Token)
+4 arquivos · ~780 linhas      34 arquivos · ~1.190 linhas
 ```
 
-**O que você vai criar:**
+**Projeto 2 — ecommerce-api-legacy** (Monolithic → MVC)
 
-- `.claude/skills/refactor-arch/` — A skill completa (SKILL.md + arquivos de referência)
-- Código refatorado dos 3 projetos — resultado da execução da Fase 3, commitado no repositório
-- `reports/audit-project-{1,2,3}.md` — Relatório de auditoria de cada projeto
-- `README.md` — Documentação do seu processo
+```
+ANTES                         DEPOIS
+src/app.js                    src/app.js                    # createApp(): composition root + listen
+src/AppManager.js (God class) src/config/index.js
+src/utils.js (config+cache    src/models/      database (promisified + transações) · seed · user · course · enrollment · payment · auditLog · financialReport
+              +"crypto")      src/controllers/ errors · validators · checkout · financialReport · user
+                              src/routes/      checkout · admin · user (Express Routers)
+                              src/views/       checkoutView · financialReportView
+                              src/services/    paymentGateway · passwordHasher (scrypt) · logger
+                              src/middlewares/ errorHandler · asyncHandler · adminAuth
+3 arquivos · ~180 linhas      26 arquivos · ~660 linhas
+```
 
-**O que já vem pronto:**
+**Projeto 3 — task-manager-api** (Partially layered → MVC)
 
-- `code-smells-project/` — API de E-commerce Python/Flask com code smells intencionais
-- `ecommerce-api-legacy/` — LMS API Node.js/Express (com fluxo de checkout) e problemas de implementação
-- `task-manager-api/` — API de Task Manager Python/Flask com organização parcial e problemas de segurança/qualidade
+```
+ANTES                         DEPOIS
+app.py (config hardcoded)     app.py                        # entry point; reexporta app, db (compatível com seed.py)
+database.py                   seed.py                       # usa create_app()
+seed.py                       src/
+models/  task · user · category ├── app.py                  # create_app()
+routes/  task · user · report   ├── config/settings.py
+         (fat routes)           ├── models/      database (utcnow) · task · user · category  (+ repositórios)
+services/ notification (não     ├── controllers/ errors · validators · metrics · task · user · category · report   ← camada que faltava
+          usado, senha SMTP)    ├── views/       presenters · task · user · category · report · system
+utils/   helpers (meio morto)   ├── services/    token_service (itsdangerous) · notification_service
+                                └── middlewares/ error_handler (JSON) · auth (Bearer)
+15 arquivos · ~1.160 linhas   32 arquivos · ~1.360 linhas
+```
 
-> **Dica:** Cada projeto contém problemas intencionais de diferentes severidades (CRITICAL, HIGH, MEDIUM, LOW), incluindo falhas de segurança, violações arquiteturais e problemas de qualidade de código. Parte do desafio é identificá-los por conta própria através da análise manual do código.
+### Validação independente (fora da skill)
 
-### README.md deve conter
+Além da validação que a própria skill faz, rodei meu próprio smoke test HTTP (stdlib, ~70 linhas). Ele envia a mesma lista de requisições ao app **original** e ao **refatorado**, sempre com banco recém-criado. Tabelas completas e logs de boot em [`reports/validation/`](reports/validation/).
 
-**A) Seção "Análise Manual":**
+| Projeto | Requisições | Iguais ao baseline | Mudanças intencionais (segurança) | Verificações novas | 5xx depois |
+|---|---|---|---|---|---|
+| 1 | 39 | 33 | 3: bypass de login por SQLi 200→**401**; `D'Agua` 500→**201**; `/admin/query` anônimo 200→**403** | 3 | **0** (antes: 1) |
+| 2 | 13 | 10 | relatório/delete exigem `X-Admin-Token` | 3 (incl. crash do cartão numérico → 400) | **0** |
+| 3 | 47 | 43 | `password` removido das respostas; token assinado; 404 em JSON | 4 (escalada admin → 403; três 500 → 400) | **0** |
 
-- Lista dos problemas identificados manualmente em cada projeto
-- Classificação por severidade
-- Justificativa de por que cada problema é relevante
+Trecho do log de boot do projeto 3 refatorado, rodando com `-W default` e **sem nenhum `DeprecationWarning`/`LegacyAPIWarning`**, que antes apareciam:
 
-**B) Seção "Construção da Skill":**
+```
+$ python seed.py && python -W default app.py
+Seed concluído com sucesso!
+  3 usuários
+  4 categorias
+  10 tasks
+WARNING src.config.settings: SECRET_KEY not set; using a random ephemeral key (tokens expire on restart)
+ * Serving Flask app 'src.app'
+ * Debug mode: off
+ * Running on http://127.0.0.1:5000
+INFO src.controllers.task_controller: Task criada id=11
+```
 
-- Decisões de design: como estruturou o SKILL.md e os arquivos de referência
-- Quais anti-patterns incluiu no catálogo e por quê
-- Como garantiu que a skill é agnóstica de tecnologia
-- Desafios encontrados e como resolveu
+Log do projeto 2: o cartão aparece mascarado e a chave do gateway não aparece mais:
 
-**C) Seção "Resultados":**
+```
+INFO LMS API rodando na porta 3000
+INFO Processando pagamento de 497 no cartão ****4444
+INFO Checkout concluído: curso=2 usuario=2 matricula=2
+INFO Usuário 1 removido com matrículas e pagamentos
+```
 
-- Resumo dos relatórios de auditoria dos 3 projetos (quantos findings por severidade em cada)
-- Comparação antes/depois da estrutura de cada projeto
-- Checklist de validação preenchido para cada projeto
-- Screenshots ou logs mostrando as aplicações rodando após refatoração
-- Observações sobre como a skill se comportou em stacks diferentes
+### Checklist de validação
 
-**D) Seção "Como Executar":**
+| Item | P1 code-smells | P2 ecommerce-legacy | P3 task-manager |
+|---|---|---|---|
+| **Fase 1 — Análise** | | | |
+| Linguagem detectada corretamente | ✅ Python | ✅ JavaScript (Node.js) | ✅ Python |
+| Framework detectado corretamente | ✅ Flask 3.1.1 | ✅ Express ^4.18.2 (4.22.1 instalado) | ✅ Flask 3.0.0 + Flask-SQLAlchemy 3.1.1 |
+| Domínio descrito corretamente | ✅ E-commerce | ✅ LMS com checkout | ✅ Task Manager |
+| Nº de arquivos condiz com a realidade | ✅ 4 | ✅ 3 | ✅ 15 |
+| **Fase 2 — Auditoria** | | | |
+| Relatório segue o template | ✅ | ✅ | ✅ |
+| Cada finding tem arquivo e linhas exatos | ✅ | ✅ | ✅ |
+| Ordenado CRITICAL → LOW | ✅ | ✅ | ✅ |
+| Mínimo de 5 findings | ✅ 22 | ✅ 20 | ✅ 18 |
+| APIs deprecated (se aplicável) | ✅ verificado; nenhuma | ✅ 2 itens | ✅ 2 APIs, todas as ocorrências |
+| Pausa e pede confirmação antes da Fase 3 | ✅ | ✅ | ✅ |
+| **Fase 3 — Refatoração** | | | |
+| Estrutura de diretórios segue MVC | ✅ | ✅ | ✅ |
+| Config extraída (sem hardcoded) | ✅ `src/config/settings.py` + `.env.example` | ✅ `src/config/index.js` + `.env.example` | ✅ `src/config/settings.py` + `.env.example` |
+| Models abstraem os dados | ✅ repositórios por entidade | ✅ 7 models | ✅ entidades + repositórios |
+| Views/Routes separadas | ✅ `src/views/` | ✅ `src/routes/` + `src/views/` | ✅ `src/views/` |
+| Controllers concentram o fluxo | ✅ sem import de Flask | ✅ sem import de Express | ✅ camada criada do zero |
+| Error handling centralizado | ✅ `middlewares/error_handler.py` | ✅ `middlewares/errorHandler.js` | ✅ `middlewares/error_handler.py` |
+| Entry point claro | ✅ `python app.py` | ✅ `npm start` | ✅ `python app.py` |
+| Aplicação inicia sem erros | ✅ | ✅ | ✅ |
+| Endpoints originais respondem | ✅ 19/19 | ✅ 3/3 | ✅ 22/22 |
 
-- Pré-requisitos (a ferramenta escolhida — Claude Code, Gemini CLI ou Codex — instalada e configurada)
-- Comandos para executar a skill em cada projeto
-- Como validar que a refatoração funcionou
+**Critérios de aceite**: Fase 1 detecta a stack (3/3) · Fase 2 com ≥ 5 findings (3/3) · ≥ 1 CRITICAL/HIGH (3/3) · aplicação funciona após a refatoração (3/3).
 
-### Ordem de execução sugerida
+### Como a skill se comportou em cada stack
 
-**1. Analisar os projetos manualmente**
+- **Projeto 1 (Flask, pseudo-MVC):** a skill não se deixou enganar pelos nomes `models.py`/`controllers.py`. Classificou o projeto como *Pseudo-layered* porque `controllers.py` eram views Flask e `models.py` continha regras. Fez a divisão completa em 34 arquivos e corrigiu a injeção sem mudar nenhum envelope de resposta.
+- **Projeto 2 (Express, monolito):** aplicou os itens específicos de Node: AP-11 (callback hell → `async/await` sobre um wrapper promisificado) e transações serializadas, já que o sqlite3 compartilha uma única conexão. Manteve o formato de erro em **texto puro** do legado, conforme a regra "preserve o envelope existente", em vez de impor JSON.
+- **Projeto 3 (Flask, parcialmente organizado):** reconheceu a organização existente (*Partially layered*) e criou o que faltava: a **camada de controllers**, config, middlewares e composition root. Também consolidou `utils/helpers.py` (meio morto) em `validators.py`. Foi o projeto em que a skill mais precisou ponderar segurança × contrato, o que levou ao refinamento da regra 3.
+- **Ponto comum:** nos 3 casos a skill subiu o app original para tirar um baseline antes de tocar no código, e se recusou a declarar ✓ sem ter observado o resultado.
 
-Leia o código dos três projetos e documente os problemas encontrados.
+---
 
-**2. Criar a skill**
+## D) Como Executar
 
-Escreva o SKILL.md e os arquivos de referência.
+### Pré-requisitos
 
-**3. Executar nos 3 projetos**
+- **Claude Code** instalado e autenticado (`npm install -g @anthropic-ai/claude-code`, depois `claude` para fazer login). Testado com a versão 2.1.x.
+- **Python 3.10+** e `pip` (projetos 1 e 3). Testado com 3.14.
+- **Node.js 18+** e `npm` (projeto 2). Testado com 22.x.
+- `curl` e `lsof`, usados pela skill na validação.
+
+### Executar a skill
+
+A skill já está em `.claude/skills/refactor-arch/` dentro de cada projeto. Abra o Claude Code **dentro da pasta do projeto**:
 
 ```bash
 # Projeto 1
 cd code-smells-project
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # para a validação
 claude "/refactor-arch"
+#   → Fase 1 (resumo) → Fase 2 (relatório + "Proceed with refactoring (Phase 3)? [y/n]") → responda y → Fase 3
 
 # Projeto 2
 cd ../ecommerce-api-legacy
+npm install
 claude "/refactor-arch"
 
 # Projeto 3
 cd ../task-manager-api
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 claude "/refactor-arch"
 ```
 
-Salve a saída da Fase 2 de cada projeto em `reports/audit-project-{1,2,3}.md`.
+Opções: `/refactor-arch --audit-only` (só Fases 1–2) e `/refactor-arch --report ../reports/audit-project-1.md` (escolhe onde salvar o relatório).
 
-**4. Iterar**
+**Modo headless** (foi assim que gerei os resultados deste repositório):
 
-Se a skill não detectou problemas suficientes ou a refatoração falhou, ajuste os arquivos de referência e execute novamente. É normal precisar de 2-4 iterações.
+```bash
+claude -p "/refactor-arch --report audit-report.md" --permission-mode acceptEdits --allowedTools "Read" "Glob" "Grep" "Edit" "Write" "Bash(curl:*)" "Bash(lsof:*)" "Bash(kill:*)" "Bash(.venv/bin/python:*)" "Bash(npm:*)" "Bash(node:*)" ...
+#   ...termina na pergunta da Fase 2; revise audit-report.md e então:
+claude -p -c "y" --permission-mode acceptEdits --allowedTools ...
+```
 
-## Critérios de Aceite
+> Para rodar a skill de novo sobre o código **legado**, restaure o projeto a partir do commit original, por exemplo `git checkout 6d1ce62 -- code-smells-project`, e copie a pasta `.claude/skills/refactor-arch/` de volta.
 
-A skill deve atingir os seguintes mínimos em **todos os 3 projetos**:
+### Validar que a refatoração funcionou
 
-| Critério | Requisito |
-|---|---|
-| Fase 1 detecta stack corretamente | OBRIGATÓRIO (3/3 projetos) |
-| Fase 2 encontra >= 5 findings | OBRIGATÓRIO (3/3 projetos) |
-| Fase 2 inclui pelo menos 1 CRITICAL ou HIGH | OBRIGATÓRIO (3/3 projetos) |
-| Fase 3 aplicação funciona após refatoração | OBRIGATÓRIO (3/3 projetos) |
+```bash
+# Projeto 1 — http://localhost:5000
+cd code-smells-project && ADMIN_TOKEN=troque-me .venv/bin/python app.py
+curl -s localhost:5000/health
+curl -s localhost:5000/produtos | head -c 200
+curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d '{"email":"admin@loja.com","senha":"admin123"}'
+curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d "{\"email\":\"' OR 1=1 --\",\"senha\":\"x\"}"   # → 401
 
-**IMPORTANTE:** Todos os critérios devem ser atingidos nos 3 projetos, não apenas em um!
+# Projeto 2 — http://localhost:3000 (exemplos também em api.http)
+cd ecommerce-api-legacy && ADMIN_TOKEN=troque-me npm start
+curl -s -X POST localhost:3000/api/checkout -H 'Content-Type: application/json' \
+  -d '{"usr":"Ana","eml":"ana@x.com","pwd":"segredo","c_id":2,"card":"4111222233334444"}'
+curl -s localhost:3000/api/admin/financial-report -H 'X-Admin-Token: troque-me'
 
-> **Sobre o projeto 3 (task-manager-api):** Este projeto já possui alguma organização. "aplicação funciona" significa que a API inicia sem erros e todos os endpoints continuam respondendo corretamente.
+# Projeto 3 — http://localhost:5000
+cd task-manager-api && .venv/bin/python seed.py && .venv/bin/python app.py
+curl -s localhost:5000/tasks | head -c 200
+curl -s localhost:5000/reports/summary | head -c 200
+curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d '{"email":"joao@email.com","password":"1234"}'
+```
 
-## Referências
+Variáveis de ambiente de cada projeto (todas opcionais em desenvolvimento) estão documentadas no `.env.example` e no `README.md` de cada pasta. As mais importantes são `SECRET_KEY`, `ADMIN_TOKEN`, `PORT`/`HOST`, `FLASK_DEBUG` e `PAYMENT_GATEWAY_KEY`.
 
-- [Claude Code: Skills](https://docs.anthropic.com/en/docs/claude-code/skills) — Documentação oficial sobre como criar e estruturar Skills
-- [Claude Code: Overview](https://docs.anthropic.com/en/docs/claude-code/overview) — Visão geral do Claude Code e suas capacidades
-- [The Complete Guide to Building Skills for Claude (PDF)](https://resources.anthropic.com/hubfs/The-Complete-Guide-to-Building-Skill-for-Claude.pdf) — Guia completo da Anthropic sobre construção de Skills
-- [Equipping Agents for the Real World with Agent Skills](https://claude.com/blog/equipping-agents-for-the-real-world-with-agent-skills) — Blog oficial da Anthropic sobre Agent Skills
-
----
-
-## Dicas Finais
-
-- **Comece pela análise manual** — entender os problemas profundamente é essencial para criar uma skill que os detecte.
-- **O SKILL.md é um prompt** — ele instrui o agente sobre o que fazer, enquanto os arquivos de referência fornecem o conhecimento de domínio.
-- **Seja específico nos sinais de detecção** — "código ruim" não ajuda; "query SQL dentro de loop for" é acionável.
-- **Teste incrementalmente** — não tente criar a skill perfeita de primeira.
-- **A skill deve ser copiável** — se ela só funciona em um projeto específico, está acoplada demais. Teste nos 3 projetos para validar.
-- **Projetos diferentes exigem adaptação** — a Fase 3 de um projeto já parcialmente organizado não vai ter as mesmas transformações de um monolito. Sua skill deve se adaptar ao contexto.
-- **Pedir confirmação na Fase 2 é obrigatório** — o humano deve revisar o relatório antes de qualquer modificação.
-- **Consulte as referências do curso** — revise a documentação oficial da ferramenta escolhida e os materiais das aulas para relembrar a estrutura e anatomia de uma skill.
+O que conferir:
+1. o servidor sobe sem traceback;
+2. as rotas listadas na seção *Endpoint contract* de cada relatório respondem com os mesmos status do original (ver [`reports/validation/`](reports/validation/));
+3. os probes de segurança agora falham: injeção → 401/0 resultados, admin sem token → 403, nenhum campo de senha nas respostas.
