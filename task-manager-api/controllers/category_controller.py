@@ -1,13 +1,13 @@
-from flask import jsonify
+from flask import jsonify, request
 
 from services import category_service
 from utils.request_utils import get_json_body
-from validators import category_validator
+from validators import category_validator, common
 from views import category_view
 
 
 def list_categories():
-    pairs = category_service.list_with_task_counts()
+    pairs = category_service.list_with_task_counts(common.pagination(request.args))
     return jsonify([category_view.render_list_item(c, count) for c, count in pairs]), 200
 
 

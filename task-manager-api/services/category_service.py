@@ -1,18 +1,14 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 
-from database import commit_or_fail, db
+from database import assign, commit_or_fail, db, paginate
 from models.category import Category
 from models.task import Task
 from utils.errors import NotFoundError
 
 
-def list_with_task_counts():
-    categories = db.session.scalars(select(Category).order_by(Category.id)).all()
-    counts = dict(db.session.execute(
-        select(Task.category_id, func.count())
-        .where(Task.category_id.isnot(None))
-        .group_by(Task.category_id)
-    ).all())
+def list_with_task_counts(page=None):
+    categories = db.session.scalars(paginate(select(Category).order_by(Category.id), page)).all()
+    counts = Task.counts_by(Task.category_id)
     return [(category, counts.get(category.id, 0)) for category in categories]
 
 
@@ -31,12 +27,13 @@ def create(fields):
 
 
 def update(category, fields):
-    for name, value in fields.items():
-        setattr(category, name, value)
+    assign(category, fields)
     commit_or_fail('Erro ao atualizar')
     return category
 
 
 def delete(category):
+    # O relacionamento Category.tasks (sem cascade de delete) faz o ORM zerar
+    # category_id das tasks na mesma transação: elas ficam sem categoria, não órfãs.
     db.session.delete(category)
     commit_or_fail('Erro ao deletar')

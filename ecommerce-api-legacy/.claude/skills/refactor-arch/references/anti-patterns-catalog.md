@@ -30,7 +30,7 @@ Se um achado cabe em dois níveis, escolha o mais alto quando houver exposição
 ### AP-03 — Exposição de dados sensíveis / autenticação fraca
 - **Sinais**: senhas em texto puro ou hash fraco (MD5/SHA1 sem salt) no banco; respostas que devolvem senha/token/hash; endpoints administrativos ou destrutivos (reset de banco, execução de SQL/comando arbitrário, dump) sem autenticação; comparação de senha em texto.
 - **Impacto**: comprometimento de contas e de todo o sistema.
-- **Playbook**: P2, P8.
+- **Playbook**: P2, P8, P12 (proteger **todas** as mutações, não só as citadas).
 
 ## HIGH
 

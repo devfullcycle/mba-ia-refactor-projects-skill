@@ -18,8 +18,9 @@ def create_app(config=None):
     if config:
         app.config.update(config)
 
-    if app.config['SECRET_KEY'] == settings.DEV_SECRET_KEY:
-        app.logger.warning('SECRET_KEY de desenvolvimento em uso; defina SECRET_KEY no ambiente.')
+    if not settings.SECRET_KEY_FROM_ENV and not (config and 'SECRET_KEY' in config):
+        app.logger.warning('SECRET_KEY ausente: usando chave aleatória (tokens expiram ao reiniciar). '
+                           'Defina SECRET_KEY no ambiente.')
 
     CORS(app, origins=app.config['CORS_ORIGINS'])
     init_db(app)

@@ -6,7 +6,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from database import db
 from utils.clock import utc_now
-from utils.constants import ADMIN_ROLE, DEFAULT_ROLE
+from utils.constants import ADMIN_ROLE, DEFAULT_ROLE, STAFF_ROLES
 
 _LEGACY_MD5 = re.compile(r'^[0-9a-f]{32}$')
 
@@ -21,6 +21,8 @@ class User(db.Model):
     role = db.Column(db.String(50), default=DEFAULT_ROLE)
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utc_now)
+
+    tasks = db.relationship('Task', back_populates='user')
 
     def set_password(self, pwd):
         self.password = generate_password_hash(pwd)
@@ -38,3 +40,11 @@ class User(db.Model):
 
     def is_admin(self):
         return self.role == ADMIN_ROLE
+
+    def is_staff(self):
+        """Admin ou manager: pode gerenciar tasks de qualquer usuário."""
+        return self.role in STAFF_ROLES
+
+    def credential_fingerprint(self):
+        """Muda sempre que a senha muda; usado para invalidar tokens antigos."""
+        return hashlib.sha256((self.password or '').encode()).hexdigest()[:16]

@@ -86,12 +86,17 @@ Só execute após a confirmação.
 3. Defina a estrutura alvo de pastas adaptada à stack (ex.: `config/`, `models/`, `controllers/` ou `routes/`, `views/` ou serializers, `middlewares/`, ponto de entrada enxuto/composition root).
 4. Aplique as transformações do playbook, priorizando CRITICAL → HIGH → MEDIUM → LOW, preservando contratos públicos (URLs, métodos, formato de resposta) — refatorar é mudar a estrutura, não o comportamento. Correções de segurança que alterem comportamento inseguro (ex.: parar de expor senha) devem ser listadas explicitamente no resumo.
 5. Mova segredos para variáveis de ambiente/config, centralize tratamento de erros, substitua APIs deprecated.
-6. **Valide**:
+6. **Controle de acesso (obrigatório se houver achado AP-03 de autenticação/autorização ou de escalada de privilégio)**: aplique o playbook P12 a **todas** as rotas de mutação listadas na Fase 1. As rotas citadas na Fase 2 são só exemplos. Proteger apenas essas e deixar outras mutações abertas reproduz a vulnerabilidade e conta como falha da Fase 3.
+   - Toda rota de mutação de usuário (criar, atualizar, desativar, excluir, trocar senha/role) exige autenticação e checagem de role/dono, salvo o registro público, que nunca pode atribuir role privilegiado.
+   - Campos privilegiados (`role`, `active`, `is_admin`, `owner_id`…) só podem ser alterados por admin em **todas** as rotas que os aceitam, tanto na criação quanto na atualização.
+   - Monte a matriz `rota → regra de acesso` (pública / autenticada+dono / admin) e justifique cada rota pública.
+7. **Valide**:
    - A aplicação **sobe** sem erros (instale dependências se preciso, rode o comando de execução da Fase 1).
    - Os **endpoints respondem** como antes: repita as chamadas do passo 2 e compare status e formato. Teste ao menos um caminho de sucesso e um de erro por recurso.
+   - **Controle de acesso** (se o passo 6 se aplicou): para cada rota de mutação, teste sem token (401), usuário comum sobre recurso alheio (403), usuário comum enviando campo privilegiado como `{"role": "admin"}` (403) e dono/admin (sucesso). Qualquer mutação que aceite requisição anônima ou troca de role por não-admin é FALHA.
    - Releia o catálogo e confirme que os achados tratados não aparecem mais.
    - Se algo falhar, corrija e revalide; não declare sucesso sem evidência.
-7. Imprima o resumo:
+8. Imprima o resumo:
 
 ```
 ================================
@@ -103,6 +108,7 @@ Não tratados / pendentes: <lista e motivo>
 Validação:
   [OK/FALHA] Aplicação inicia
   [OK/FALHA] Endpoints: <n>/<n> respondendo conforme baseline
+  [OK/FALHA/N.A.] Controle de acesso: <n>/<n> rotas de mutação protegidas (matriz rota → regra)
 Mudanças de comportamento intencionais: <lista ou "nenhuma">
 ================================
 ```

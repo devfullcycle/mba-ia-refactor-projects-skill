@@ -1,24 +1,13 @@
-import re
-
-from utils.constants import DEFAULT_ROLE, EMAIL_PATTERN, MIN_PASSWORD_LENGTH, USER_ROLES
+from utils.constants import DEFAULT_ROLE, MIN_PASSWORD_LENGTH, USER_ROLES
 from utils.errors import ValidationError
+from validators import common
 
-
-def _email(value):
-    if not isinstance(value, str) or not re.match(EMAIL_PATTERN, value):
-        raise ValidationError('Email inválido')
-    return value
+_ACTIVE_MESSAGE = 'Campo active deve ser booleano'
 
 
 def _role(value):
     if not isinstance(value, str) or value not in USER_ROLES:
         raise ValidationError('Role inválido')
-    return value
-
-
-def _name(value):
-    if not isinstance(value, str) or not value.strip():
-        raise ValidationError('Nome inválido')
     return value
 
 
@@ -32,34 +21,30 @@ def validate_create(data):
         raise ValidationError('Email é obrigatório')
     if not password:
         raise ValidationError('Senha é obrigatória')
-    _email(email)
-    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
-        raise ValidationError('Senha deve ter no mínimo 4 caracteres')
-    return {
-        'name': _name(name),
-        'email': email,
-        'password': password,
+    fields = {
+        'name': common.name(name),
+        'email': common.email(email),
+        'password': common.password(password),
         'role': _role(data.get('role', DEFAULT_ROLE)),
     }
+    if 'active' in data:  # campo privilegiado: aceito aqui, autorizado no controller
+        fields['active'] = common.boolean(data['active'], _ACTIVE_MESSAGE)
+    return fields
 
 
 def validate_update(data):
     fields = {}
     if 'name' in data:
-        fields['name'] = _name(data['name'])
+        fields['name'] = common.name(data['name'])
     if 'email' in data:
-        fields['email'] = _email(data['email'])
+        fields['email'] = common.email(data['email'])
     if 'password' in data:
-        password = data['password']
-        if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
-            raise ValidationError('Senha muito curta')
-        fields['password'] = password
+        fields['password'] = common.password(
+            data['password'], f'Senha muito curta (mínimo {MIN_PASSWORD_LENGTH} caracteres)')
     if 'role' in data:
         fields['role'] = _role(data['role'])
     if 'active' in data:
-        if not isinstance(data['active'], bool):
-            raise ValidationError('Campo active deve ser booleano')
-        fields['active'] = data['active']
+        fields['active'] = common.boolean(data['active'], _ACTIVE_MESSAGE)
     return fields
 
 
@@ -70,4 +55,4 @@ def validate_login(data):
         raise ValidationError('Email e senha são obrigatórios')
     if not isinstance(email, str) or not isinstance(password, str):
         raise ValidationError('Credenciais inválidas')
-    return email, password
+    return email.strip().lower(), password

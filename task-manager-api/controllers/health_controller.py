@@ -1,11 +1,12 @@
-from datetime import datetime
-
 from flask import jsonify
+
+from utils.clock import utc_now
+from utils.constants import API_VERSION
 
 
 def health():
-    return jsonify({'status': 'ok', 'timestamp': str(datetime.now())}), 200
+    return jsonify({'status': 'ok', 'timestamp': str(utc_now())}), 200
 
 
 def index():
-    return jsonify({'message': 'Task Manager API', 'version': '1.0'}), 200
+    return jsonify({'message': 'Task Manager API', 'version': API_VERSION}), 200
