@@ -2,7 +2,7 @@
 
 Padrões de transformação (antes → depois). Exemplos em Python/Node por serem comuns; **aplique o mesmo princípio na sintaxe da stack detectada**. Preserve sempre URLs, métodos e formato de resposta.
 
-Índice: P1 SQL parametrizado · P2 Segredos em config · P3 Extrair controller · P4 Extrair model · P5 Validação e serializer · P6 Eliminar estado global · P7 Erros centralizados · P8 Substituir deprecated/inseguro · P9 Corrigir N+1 · P10 Constantes e nomenclatura · P11 Quebrar God file / composition root
+Índice: P1 SQL parametrizado · P2 Segredos em config · P3 Extrair controller · P4 Extrair model · P5 Validação e serializer · P6 Eliminar estado global · P7 Erros centralizados · P8 Substituir deprecated/inseguro · P9 Corrigir N+1 · P10 Constantes e nomenclatura · P11 Quebrar God file / composition root · P12 Autenticação e autorização em toda mutação
 
 ---
 
@@ -24,6 +24,8 @@ db.get("SELECT * FROM users WHERE id = ?", [req.params.id])
 Para ORM, use os métodos de filtro (`filter_by`, `where`) e nunca interpole strings. Nomes de coluna/ordenação dinâmicos: valide contra uma lista permitida (whitelist).
 
 ## P2 — Segredos para configuração (AP-02, AP-03)
+> Para autenticação/autorização de rotas (AP-03), veja **P12**.
+
 **Antes**
 ```python
 app.config["SECRET_KEY"] = "minha-chave-123"
@@ -243,10 +245,56 @@ app.listen(config.port)
 ```
 Procedimento: (1) crie pastas; (2) mova config → `config/`; (3) mova SQL/regras por entidade → `models/`; (4) mova handlers → `controllers/`; (5) deixe rotas só com mapeamento; (6) reduza o entry point; (7) suba a app e valide a cada passo.
 
+## P12 — Autenticação e autorização em toda mutação (AP-03)
+Quando a auditoria aponta "endpoints sem autenticação" ou "escalada de privilégio", os endpoints citados no relatório são **exemplos**, não a lista completa. A correção cobre **todas** as rotas que alteram estado, e não só as que o relatório citou.
+
+**Procedimento obrigatório**
+1. **Inventarie** todas as rotas de mutação (POST/PUT/PATCH/DELETE e qualquer GET com efeito colateral) a partir da lista de endpoints da Fase 1, e não a partir dos exemplos da Fase 2. Monte uma matriz `rota → regra de acesso`.
+2. **Classifique** cada uma:
+   - **Pública por design**: só login/registro/health. Justifique cada exceção na matriz.
+   - **Autenticada + dono do recurso ou admin**: o usuário só altera o que é seu (ex.: `PUT /users/<id>` com `id == current_user.id`).
+   - **Somente admin**: operações administrativas, destrutivas em massa ou sobre recursos de terceiros.
+3. **Campos privilegiados** (`role`, `is_admin`, `active`, `permissions`, `owner_id`/`user_id`, saldo, status de aprovação…): o fato de o campo ser um valor válido no validador não autoriza ninguém a defini-lo. Em **toda** rota que aceita o campo (criação **e** atualização, inclusive PATCH/bulk/import), só admin pode defini-lo ou alterá-lo; para os demais, rejeite com 403 (não ignore em silêncio). Um usuário nunca altera o próprio `role`.
+4. Aplique a autenticação **na rota** (decorator/middleware) e a checagem de dono/role no controller ou service, e **antes** de persistir.
+
+**Antes**
+```python
+user_bp.add_url_rule('/users/<int:user_id>', view_func=c.update_user, methods=['PUT'])   # anônimo
+user_bp.add_url_rule('/users/<int:user_id>', view_func=require_admin(c.delete_user), methods=['DELETE'])
+
+def update_user(user_id):
+    fields = user_validator.validate_update(get_json_body())   # aceita 'role' de qualquer um
+    return jsonify(user_view.render(user_service.update(user_service.get(user_id), fields)))
+```
+**Depois**
+```python
+PRIVILEGED_USER_FIELDS = {'role', 'active'}
+
+user_bp.add_url_rule('/users/<int:user_id>', view_func=require_auth(c.update_user), methods=['PUT'])
+
+def update_user(user_id):
+    current = g.current_user
+    if current.id != user_id and not current.is_admin():
+        raise ForbiddenError('Sem permissão para alterar este usuário')
+    fields = user_validator.validate_update(get_json_body())
+    if PRIVILEGED_USER_FIELDS & fields.keys() and not current.is_admin():
+        raise ForbiddenError('Apenas administradores podem alterar role/active')
+    return jsonify(user_view.render(user_service.update(user_service.get(user_id), fields)))
+```
+```js
+router.put("/users/:id", requireAuth, (req, res, next) => {
+  const me = req.user
+  if (me.id !== Number(req.params.id) && me.role !== "admin") return next(new ForbiddenError())
+  if (("role" in req.body || "active" in req.body) && me.role !== "admin") return next(new ForbiddenError())
+  ...
+})
+```
+**Validação (obrigatória na Fase 3):** para cada rota de mutação da matriz, teste (a) sem token → 401; (b) usuário comum agindo sobre recurso de outro → 403; (c) usuário comum enviando campo privilegiado (ex.: `{"role": "admin"}` em criação **e** atualização) → 403; (d) dono/admin → sucesso. Inclua a matriz e os resultados no resumo da Fase 3. Restringir acesso é mudança de comportamento intencional e deve aparecer no resumo.
+
 ---
 
 ## Ordem recomendada de aplicação
 
-1. P2, P1, P8 (segurança) → 2. P11 (estrutura) → 3. P4, P3, P5 (camadas) → 4. P6, P7 → 5. P9 → 6. P10.
+1. P2, P1, P8, P12 (segurança) → 2. P11 (estrutura) → 3. P4, P3, P5 (camadas) → 4. P6, P7 → 5. P9 → 6. P10.
 
 Após cada bloco, suba a aplicação e rode os endpoints; reverta o bloco se o comportamento mudar sem intenção.

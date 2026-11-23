@@ -11,3 +11,5 @@ class Category(db.Model):
     description = db.Column(db.String(300), nullable=True)
     color = db.Column(db.String(7), default=DEFAULT_COLOR)
     created_at = db.Column(db.DateTime, default=utc_now)
+
+    tasks = db.relationship('Task', back_populates='category')

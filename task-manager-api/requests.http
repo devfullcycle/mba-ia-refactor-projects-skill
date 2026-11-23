@@ -17,9 +17,12 @@ GET {{baseUrl}}/health
 
 ###############################################################
 # Login (rode antes das rotas protegidas)
-# Seed: joao@email.com/1234 (admin), maria@email.com/abcd (user),
-#       pedro@email.com/pass (manager)
+# Senhas: as impressas pelo `python seed.py` (ou SEED_PASSWORD do .env).
+# joao@email.com (admin), maria@email.com (user), pedro@email.com (manager)
 ###############################################################
+
+@adminPassword = cole-aqui-a-senha-do-joao
+@userPassword = cole-aqui-a-senha-da-maria
 
 ### Login como admin (guarda o token em {{adminToken}})
 # @name loginAdmin
@@ -28,7 +31,7 @@ Content-Type: {{contentType}}
 
 {
   "email": "joao@email.com",
-  "password": "1234"
+  "password": "{{adminPassword}}"
 }
 
 ###
@@ -41,7 +44,7 @@ Content-Type: {{contentType}}
 
 {
   "email": "maria@email.com",
-  "password": "abcd"
+  "password": "{{userPassword}}"
 }
 
 ###
@@ -69,16 +72,24 @@ GET {{baseUrl}}/tasks/1
 ### Task inexistente -> 404
 GET {{baseUrl}}/tasks/999
 
-### Criar task -> 201
+### Criar task SEM token -> 401
+POST {{baseUrl}}/tasks
+Content-Type: {{contentType}}
+
+{
+  "title": "Sem login"
+}
+
+### Criar task como usuário comum (vira dona) -> 201
 # @name createTask
 POST {{baseUrl}}/tasks
 Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
 
 {
   "title": "Minha nova task",
   "description": "Criada pelo REST Client",
   "priority": 2,
-  "user_id": 1,
   "category_id": 1,
   "due_date": "2030-01-31",
   "tags": ["manual", "teste"]
@@ -87,9 +98,20 @@ Content-Type: {{contentType}}
 ###
 @newTaskId = {{createTask.response.body.id}}
 
+### Criar task para OUTRO usuário como usuário comum -> 403
+POST {{baseUrl}}/tasks
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "title": "Task para o João",
+  "user_id": 1
+}
+
 ### Criar task inválida (título curto) -> 400
 POST {{baseUrl}}/tasks
 Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
 
 {
   "title": "ab"
@@ -98,15 +120,26 @@ Content-Type: {{contentType}}
 ### Criar task com prioridade não numérica -> 400
 POST {{baseUrl}}/tasks
 Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
 
 {
   "title": "Prioridade inválida",
   "priority": "alta"
 }
 
-### Atualizar task criada
+### Atualizar task alheia (task 1 é do João) como usuário comum -> 403
+PUT {{baseUrl}}/tasks/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "title": "Não é minha"
+}
+
+### Atualizar task criada (dona) -> 200
 PUT {{baseUrl}}/tasks/{{newTaskId}}
 Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
 
 {
   "status": "in_progress",
@@ -128,7 +161,11 @@ GET {{baseUrl}}/tasks/stats
 ### Deletar task SEM token -> 401
 DELETE {{baseUrl}}/tasks/{{newTaskId}}
 
-### Deletar task COM token -> 200
+### Deletar task alheia como usuário comum -> 403
+DELETE {{baseUrl}}/tasks/1
+Authorization: Bearer {{userToken}}
+
+### Deletar task COM token da dona -> 200
 DELETE {{baseUrl}}/tasks/{{newTaskId}}
 Authorization: Bearer {{userToken}}
 
@@ -136,14 +173,20 @@ Authorization: Bearer {{userToken}}
 # Usuários
 ###############################################################
 
+### Listar usuários SEM token -> 401
+GET {{baseUrl}}/users
+
 ### Listar usuários (sem campo password)
 GET {{baseUrl}}/users
+Authorization: Bearer {{userToken}}
 
 ### Buscar usuário com suas tasks
 GET {{baseUrl}}/users/1
+Authorization: Bearer {{userToken}}
 
-### Tasks de um usuário
-GET {{baseUrl}}/users/1/tasks
+### Tasks de um usuário (paginação opcional)
+GET {{baseUrl}}/users/1/tasks?limit=2&offset=0
+Authorization: Bearer {{userToken}}
 
 ### Criar usuário comum -> 201
 # @name createUser
@@ -192,9 +235,36 @@ Authorization: Bearer {{adminToken}}
   "role": "admin"
 }
 
-### Atualizar usuário
+### Atualizar usuário SEM token -> 401
 PUT {{baseUrl}}/users/{{newUserId}}
 Content-Type: {{contentType}}
+
+{
+  "name": "Sem login"
+}
+
+### Usuário comum tentando virar admin -> 403
+PUT {{baseUrl}}/users/2
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "role": "admin"
+}
+
+### Usuário comum alterando outro usuário -> 403
+PUT {{baseUrl}}/users/1
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "password": "tentativa123"
+}
+
+### Admin atualiza usuário -> 200
+PUT {{baseUrl}}/users/{{newUserId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Ana Atualizada"
@@ -215,10 +285,20 @@ Authorization: Bearer {{adminToken}}
 ### Listar categorias (com task_count)
 GET {{baseUrl}}/categories
 
-### Criar categoria -> 201
+### Criar categoria como usuário comum -> 403
+POST {{baseUrl}}/categories
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "name": "Não autorizada"
+}
+
+### Criar categoria (admin) -> 201
 # @name createCategory
 POST {{baseUrl}}/categories
 Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Teste manual",
@@ -232,15 +312,17 @@ Content-Type: {{contentType}}
 ### Criar categoria com cor inválida -> 400
 POST {{baseUrl}}/categories
 Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Cor ruim",
   "color": "vermelho"
 }
 
-### Atualizar categoria
+### Atualizar categoria (admin)
 PUT {{baseUrl}}/categories/{{newCategoryId}}
 Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
 
 {
   "name": "Teste manual (editada)"
@@ -249,19 +331,34 @@ Content-Type: {{contentType}}
 ### Deletar categoria SEM token -> 401
 DELETE {{baseUrl}}/categories/{{newCategoryId}}
 
-### Deletar categoria COM token -> 200
+### Deletar categoria como usuário comum -> 403
 DELETE {{baseUrl}}/categories/{{newCategoryId}}
 Authorization: Bearer {{userToken}}
+
+### Deletar categoria (admin) -> 200
+DELETE {{baseUrl}}/categories/{{newCategoryId}}
+Authorization: Bearer {{adminToken}}
 
 ###############################################################
 # Relatórios
 ###############################################################
 
-### Resumo geral
+### Resumo geral como usuário comum -> 403
 GET {{baseUrl}}/reports/summary
+Authorization: Bearer {{userToken}}
 
-### Relatório de um usuário
+### Resumo geral (admin/manager)
+GET {{baseUrl}}/reports/summary
+Authorization: Bearer {{adminToken}}
+
+### Relatório de outro usuário como usuário comum -> 403
 GET {{baseUrl}}/reports/user/1
+Authorization: Bearer {{userToken}}
+
+### Relatório de um usuário (admin)
+GET {{baseUrl}}/reports/user/1
+Authorization: Bearer {{adminToken}}
 
 ### Relatório de usuário inexistente -> 404
 GET {{baseUrl}}/reports/user/999
+Authorization: Bearer {{adminToken}}
