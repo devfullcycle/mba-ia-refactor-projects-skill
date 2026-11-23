@@ -1,6 +1,3 @@
-"""Domain errors raised by controllers and translated to HTTP by the error middleware."""
-
-
 class AppError(Exception):
     status_code = 400
 

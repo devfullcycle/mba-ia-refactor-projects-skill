@@ -1,4 +1,3 @@
-"""Service metadata endpoints (no configuration or secrets are exposed)."""
 from datetime import datetime
 
 from flask import Blueprint
@@ -7,7 +6,7 @@ API_NAME = "Task Manager API"
 API_VERSION = "1.0"
 
 
-def build_system_blueprint():
+def build_system_routes():
     bp = Blueprint("system", __name__)
 
     @bp.get("/health")

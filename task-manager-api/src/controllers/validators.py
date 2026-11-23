@@ -1,138 +1,108 @@
-"""Input validation shared by every controller (single source for each rule)."""
+"""Input validation shared by create and update use cases. Error messages are part of the API contract."""
 import re
 from datetime import datetime
 
-from ..models.task_model import PRIORITY_MAX, PRIORITY_MIN, TAG_SEPARATOR, TASK_STATUSES
-from ..models.user_model import USER_ROLES
-from .errors import ValidationError
+from src.controllers.errors import ValidationError
+from src.models.task_model import (
+    PRIORITY_MAX, PRIORITY_MIN, TAG_SEPARATOR, TASK_STATUSES, TITLE_MAX_LENGTH, TITLE_MIN_LENGTH,
+)
+from src.models.user_model import MIN_PASSWORD_LENGTH, USER_ROLES
 
-MIN_TITLE_LENGTH = 3
-MAX_TITLE_LENGTH = 200
-MIN_PASSWORD_LENGTH = 4
-DATE_FORMAT = "%Y-%m-%d"
-EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$")
-
-MSG_INVALID_PAYLOAD = "Dados inválidos"
-MSG_INVALID_DATE = "Formato de data inválido. Use YYYY-MM-DD"
-MSG_INVALID_PRIORITY = "Prioridade inválida"
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$")
+DUE_DATE_FORMAT = "%Y-%m-%d"
+INVALID_DATA = "Dados inválidos"
 
 
-def require_payload(data):
-    if not data or not isinstance(data, dict):
-        raise ValidationError(MSG_INVALID_PAYLOAD)
+def require_body(data, allow_empty=False):
+    if not isinstance(data, dict) or (not data and not allow_empty):
+        raise ValidationError(INVALID_DATA)
     return data
 
 
-def require_dict(data):
-    """Like require_payload, but an empty object is accepted (partial updates)."""
-    if not isinstance(data, dict):
-        raise ValidationError(MSG_INVALID_PAYLOAD)
-    return data
-
-
-def _is_int(value):
-    return isinstance(value, int) and not isinstance(value, bool)
-
-
-def require_text(value, missing_message):
-    if not value or not isinstance(value, str):
-        raise ValidationError(missing_message)
-    return value
-
-
-def optional_text(value, message):
-    if value is not None and not isinstance(value, str):
-        raise ValidationError(message)
-    return value
-
-
-def validate_title(value):
-    if not value:
+def validate_title(title, required=True):
+    if title is None or (required and not title):
         raise ValidationError("Título é obrigatório")
-    if not isinstance(value, str):
+    if not isinstance(title, str):
         raise ValidationError("Título inválido")
-    if len(value) < MIN_TITLE_LENGTH:
+    if len(title) < TITLE_MIN_LENGTH:
         raise ValidationError("Título muito curto")
-    if len(value) > MAX_TITLE_LENGTH:
+    if len(title) > TITLE_MAX_LENGTH:
         raise ValidationError("Título muito longo")
-    return value
+    return title
 
 
-def validate_status(value):
-    if value not in TASK_STATUSES:
+def validate_status(status):
+    if not isinstance(status, str) or status not in TASK_STATUSES:
         raise ValidationError("Status inválido")
-    return value
+    return status
 
 
-def validate_priority(value):
-    if not _is_int(value):
-        raise ValidationError(MSG_INVALID_PRIORITY)
-    if not PRIORITY_MIN <= value <= PRIORITY_MAX:
+def validate_priority(priority):
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise ValidationError("Prioridade inválida")
+    if not PRIORITY_MIN <= priority <= PRIORITY_MAX:
         raise ValidationError(f"Prioridade deve ser entre {PRIORITY_MIN} e {PRIORITY_MAX}")
-    return value
+    return priority
 
 
-def parse_due_date(value):
-    """Empty values clear the due date; anything else must be YYYY-MM-DD."""
-    if not value:
-        return None
-    if not isinstance(value, str):
-        raise ValidationError(MSG_INVALID_DATE)
+def parse_due_date(value, error_message):
     try:
-        return datetime.strptime(value, DATE_FORMAT)
-    except ValueError as exc:
-        raise ValidationError(MSG_INVALID_DATE) from exc
+        return datetime.strptime(value, DUE_DATE_FORMAT)
+    except (TypeError, ValueError):
+        raise ValidationError(error_message) from None
 
 
-def normalize_tags(value):
-    if not value:
+def normalize_tags(tags):
+    if isinstance(tags, list):
+        return TAG_SEPARATOR.join(str(tag) for tag in tags)
+    return None if tags is None else str(tags)
+
+
+def coerce_id(value):
+    """Int id from JSON (int or digit string); None when it cannot reference any row."""
+    if isinstance(value, bool):
         return None
-    if isinstance(value, list):
-        return TAG_SEPARATOR.join(str(tag) for tag in value)
-    if isinstance(value, str):
+    if isinstance(value, int):
         return value
-    raise ValidationError("Tags inválidas")
-
-
-def parse_optional_id(value, message):
-    """Falsy → None; ints or digit strings → int; anything else is invalid."""
-    if not value:
-        return None
-    if _is_int(value):
-        return value
-    if isinstance(value, str) and value.isdigit():
+    if isinstance(value, str) and value.strip().isdigit():
         return int(value)
-    raise ValidationError(message)
+    return None
 
 
-def parse_int_query(value, message):
+def parse_int_query(value, error_message):
     if not value:
         return None
     try:
         return int(value)
-    except ValueError as exc:
-        raise ValidationError(message) from exc
+    except ValueError:
+        raise ValidationError(error_message) from None
 
 
-def validate_email(value):
-    if not isinstance(value, str) or not EMAIL_PATTERN.match(value):
+def validate_name(name):
+    if not name or not isinstance(name, str):
+        raise ValidationError("Nome é obrigatório")
+    return name
+
+
+def validate_email(email):
+    if not isinstance(email, str) or not EMAIL_REGEX.match(email):
         raise ValidationError("Email inválido")
-    return value
+    return email
 
 
-def validate_password(value):
-    if not isinstance(value, str) or len(value) < MIN_PASSWORD_LENGTH:
-        raise ValidationError(f"Senha deve ter no mínimo {MIN_PASSWORD_LENGTH} caracteres")
-    return value
+def validate_password(password, error_message):
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD_LENGTH:
+        raise ValidationError(error_message)
+    return password
 
 
-def validate_role(value):
-    if value not in USER_ROLES:
+def validate_role(role):
+    if not isinstance(role, str) or role not in USER_ROLES:
         raise ValidationError("Role inválido")
-    return value
+    return role
 
 
-def validate_bool(value, message):
-    if not isinstance(value, bool):
-        raise ValidationError(message)
-    return value
+def validate_active(active):
+    if not isinstance(active, bool):
+        raise ValidationError("Valor de active inválido")
+    return active

@@ -1,30 +1,41 @@
-"""User use cases: CRUD, user tasks and login."""
 import logging
 
-from ..models.user_model import ROLE_ADMIN, ROLE_USER, User
-from . import validators
-from .errors import ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError
+from src.controllers import validators
+from src.controllers.errors import (
+    ConflictError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError,
+)
+from src.models.user_model import PRIVILEGED_ROLES, ROLE_USER, User
 
 logger = logging.getLogger(__name__)
 
-MSG_CREDENTIALS_REQUIRED = "Email e senha são obrigatórios"
-MSG_INVALID_CREDENTIALS = "Credenciais inválidas"
-MSG_ADMIN_ONLY_ROLE = "Apenas administradores podem atribuir o papel admin"
+USER_NOT_FOUND = "Usuário não encontrado"
+EMAIL_TAKEN = "Email já cadastrado"
+INVALID_CREDENTIALS = "Credenciais inválidas"
+PRIVILEGED_FIELDS = ("role", "active")
+
+
+def require_admin(caller, message):
+    """AP-04 guard for conditional operations: 401 anonymous, 403 non-admin."""
+    if caller is None:
+        raise UnauthorizedError("Autenticação necessária")
+    if not caller.is_admin():
+        raise ForbiddenError(message)
 
 
 class UserController:
-    def __init__(self, users, tasks, token_service):
+    def __init__(self, users, tasks, tokens):
         self.users = users
         self.tasks = tasks
-        self.token_service = token_service
+        self.tokens = tokens
 
     def list_users(self):
-        return self.users.list_with_task_counts()
+        counts = self.tasks.count_by_user()
+        return [(user, counts.get(user.id, (0, 0))[0]) for user in self.users.list_all()]
 
     def get_user(self, user_id):
         user = self.users.get(user_id)
         if user is None:
-            raise NotFoundError("Usuário não encontrado")
+            raise NotFoundError(USER_NOT_FOUND)
         return user
 
     def get_user_with_tasks(self, user_id):
@@ -35,17 +46,27 @@ class UserController:
         self.get_user(user_id)
         return self.tasks.list_by_user(user_id)
 
-    def create_user(self, data, actor_id=None):
-        validators.require_payload(data)
-        name = validators.require_text(data.get("name"), "Nome é obrigatório")
-        email = validators.require_text(data.get("email"), "Email é obrigatório")
-        password = validators.require_text(data.get("password"), "Senha é obrigatória")
+    def create_user(self, data, caller):
+        data = validators.require_body(data)
+        role = data.get("role", ROLE_USER)
+        if role in PRIVILEGED_ROLES:
+            require_admin(caller, "Apenas administradores podem criar usuários com role privilegiado")
+
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        if not name:
+            raise ValidationError("Nome é obrigatório")
+        if not email:
+            raise ValidationError("Email é obrigatório")
+        if not password:
+            raise ValidationError("Senha é obrigatória")
+        validators.validate_name(name)
         validators.validate_email(email)
-        validators.validate_password(password)
+        validators.validate_password(password, "Senha deve ter no mínimo 4 caracteres")
         if self.users.get_by_email(email) is not None:
-            raise ConflictError("Email já cadastrado")
-        role = validators.validate_role(data.get("role", ROLE_USER))
-        self._ensure_can_assign(role, actor_id)
+            raise ConflictError(EMAIL_TAKEN)
+        validators.validate_role(role)
 
         user = User(name=name, email=email, role=role)
         user.set_password(password)
@@ -54,57 +75,51 @@ class UserController:
         logger.info("Usuário criado id=%s", user.id)
         return user
 
-    def update_user(self, user_id, data, actor_id=None):
+    def update_user(self, user_id, data, caller):
+        if isinstance(data, dict) and any(field in data for field in PRIVILEGED_FIELDS):
+            require_admin(caller, "Apenas administradores podem alterar role/active")
         user = self.get_user(user_id)
-        validators.require_payload(data)
-        if "name" in data:
-            validators.require_text(data["name"], "Nome é obrigatório")
-        if "email" in data:
-            validators.validate_email(data["email"])
-            existing = self.users.get_by_email(data["email"])
-            if existing is not None and existing.id != user_id:
-                raise ConflictError("Email já cadastrado")
-        if "password" in data:
-            validators.validate_password(data["password"])
-        if "role" in data:
-            self._ensure_can_assign(validators.validate_role(data["role"]), actor_id)
-        if "active" in data:
-            validators.validate_bool(data["active"], "Campo active deve ser booleano")
+        data = validators.require_body(data)
 
-        for field in ("name", "email", "role", "active"):
-            if field in data:
-                setattr(user, field, data[field])
+        if "name" in data:
+            user.name = validators.validate_name(data["name"])
+        if "email" in data:
+            email = validators.validate_email(data["email"])
+            existing = self.users.get_by_email(email)
+            if existing is not None and existing.id != user_id:
+                raise ConflictError(EMAIL_TAKEN)
+            user.email = email
         if "password" in data:
-            user.set_password(data["password"])
+            user.set_password(validators.validate_password(data["password"], "Senha muito curta"))
+        if "role" in data:
+            user.role = validators.validate_role(data["role"])
+        if "active" in data:
+            user.active = validators.validate_active(data["active"])
+
         self.users.commit()
+        logger.info("Usuário atualizado id=%s", user.id)
         return user
 
     def delete_user(self, user_id):
         user = self.get_user(user_id)
-        self.tasks.delete_by_user(user_id)  # same transaction as the user delete
+        self.tasks.delete_by_user(user_id)  # same transaction as the user removal
         self.users.delete(user)
         self.users.commit()
         logger.info("Usuário deletado id=%s", user_id)
 
     def login(self, data):
-        validators.require_payload(data)
-        email, password = data.get("email"), data.get("password")
+        data = validators.require_body(data)
+        email = data.get("email")
+        password = data.get("password")
         if not email or not password:
-            raise ValidationError(MSG_CREDENTIALS_REQUIRED)
+            raise ValidationError("Email e senha são obrigatórios")
         if not isinstance(email, str) or not isinstance(password, str):
-            raise ValidationError(MSG_CREDENTIALS_REQUIRED)
+            raise UnauthorizedError(INVALID_CREDENTIALS)
 
         user = self.users.get_by_email(email)
         if user is None or not user.check_password(password):
-            raise UnauthorizedError(MSG_INVALID_CREDENTIALS)
-        self.users.commit()  # persists a transparent legacy-hash upgrade, if any
+            raise UnauthorizedError(INVALID_CREDENTIALS)
         if not user.active:
             raise ForbiddenError("Usuário inativo")
-        return user, self.token_service.issue(user.id)
-
-    def _ensure_can_assign(self, role, actor_id):
-        if role != ROLE_ADMIN:
-            return
-        actor = self.users.get(actor_id) if actor_id is not None else None
-        if actor is None or not actor.active or not actor.is_admin():
-            raise ForbiddenError(MSG_ADMIN_ONLY_ROLE)
+        self.users.commit()  # persists a transparent legacy-hash upgrade, if any
+        return user, self.tokens.issue(user.id)

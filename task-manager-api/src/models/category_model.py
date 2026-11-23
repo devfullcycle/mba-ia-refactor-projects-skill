@@ -1,8 +1,4 @@
-"""Category entity and its repository."""
-from sqlalchemy import func, select
-
-from .database import db, utcnow
-from .task_model import Task
+from src.models.database import db, utcnow
 
 DEFAULT_COLOR = "#000000"
 
@@ -27,29 +23,23 @@ class Category(db.Model):
 
 
 class CategoryRepository:
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, database):
+        self.db = database
 
     def get(self, category_id):
-        return self.session.get(Category, category_id)
+        return self.db.session.get(Category, category_id)
+
+    def list_all(self):
+        return self.db.session.execute(self.db.select(Category).order_by(Category.id)).scalars().all()
 
     def count(self):
-        return self.session.scalar(select(func.count(Category.id)))
-
-    def list_with_task_counts(self):
-        stmt = (
-            select(Category, func.count(Task.id))
-            .outerjoin(Task, Task.category_id == Category.id)
-            .group_by(Category.id)
-            .order_by(Category.id)
-        )
-        return self.session.execute(stmt).all()
+        return self.db.session.execute(self.db.select(self.db.func.count(Category.id))).scalar_one()
 
     def add(self, category):
-        self.session.add(category)
+        self.db.session.add(category)
 
     def delete(self, category):
-        self.session.delete(category)
+        self.db.session.delete(category)
 
     def commit(self):
-        self.session.commit()
+        self.db.session.commit()

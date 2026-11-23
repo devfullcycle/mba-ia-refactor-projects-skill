@@ -1,8 +1,7 @@
-"""HTTP layer for reports."""
 from flask import Blueprint, jsonify
 
 
-def build_report_blueprint(controller):
+def build_report_routes(controller):
     bp = Blueprint("reports", __name__)
 
     @bp.get("/reports/summary")

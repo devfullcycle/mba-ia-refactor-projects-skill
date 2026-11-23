@@ -22,7 +22,7 @@ Este repositório contém:
 |---|---|---|---|---|
 | `code-smells-project` | Python 3 + Flask 3.1.1 + sqlite3 | E-commerce (produtos, usuários, pedidos) | 22 (6 C · 5 H · 6 M · 5 L) | 19/19 |
 | `ecommerce-api-legacy` | Node.js + Express 4 + sqlite3 | LMS com checkout (cursos, matrículas, pagamentos) | 20 (5 C · 6 H · 5 M · 4 L) | 3/3 |
-| `task-manager-api` | Python 3 + Flask 3.0 + Flask-SQLAlchemy | Task Manager (tasks, usuários, categorias) | 18 (4 C · 3 H · 6 M · 5 L) | 22/22 |
+| `task-manager-api` | Python 3 + Flask 3.0 + Flask-SQLAlchemy | Task Manager (tasks, usuários, categorias) | 19 (4 C · 4 H · 6 M · 5 L) | 22/22 |
 
 ---
 
@@ -113,7 +113,7 @@ Feita **antes** de escrever a skill, lendo todo o código-fonte e subindo cada a
 
 ### Decisões de design
 
-1. **`SKILL.md` é o roteiro, as referências são o conhecimento.** O `SKILL.md` (~170 linhas) só diz *o que fazer e em que ordem*. Cada fase indica quais arquivos ler naquele momento, o que mantém o contexto enxuto (*progressive disclosure*) e permite evoluir o catálogo sem mexer no fluxo.
+1. **`SKILL.md` é o roteiro, as referências são o conhecimento.** O `SKILL.md` (~180 linhas) só diz *o que fazer e em que ordem*. Cada fase indica quais arquivos ler naquele momento, o que mantém o contexto enxuto (*progressive disclosure*) e permite evoluir o catálogo sem mexer no fluxo.
 2. **Banners fixos de saída** (`PHASE 1: PROJECT ANALYSIS`, `ARCHITECTURE AUDIT REPORT`, `PHASE 3: REFACTORING COMPLETE`) idênticos aos do enunciado. Assim cada execução pode ser comparada lado a lado.
 3. **Portão de confirmação explícito.** A regra global 1 proíbe qualquer escrita antes do "y". A única exceção é o próprio arquivo do relatório, que é criado e nunca altera código. O agente usa `AskUserQuestion` quando disponível e, se não estiver, imprime `Proceed with refactoring (Phase 3)? [y/n]` e encerra o turno. `disable-model-invocation: true` impede que a skill seja disparada automaticamente: ela só roda via `/refactor-arch`.
 4. **Evidência acima de opinião.** Cada achado exige `arquivo:linha` reaberto antes de ir para o relatório. Um *grep hit* é só candidato e precisa ser confirmado lendo o código. Há *sanity gates* antes de imprimir: contagens batem com o resumo e todo achado tem linha real.
@@ -128,7 +128,7 @@ Feita **antes** de escrever a skill, lendo todo o código-fonte e subindo cada a
 | CRITICAL | AP-01 | Segredos/credenciais hardcoded | Presente nos 3 projetos (`SECRET_KEY`, `pk_live_…`, senha SMTP) |
 | CRITICAL | AP-02 | SQL Injection (concatenação/interpolação) | Projeto 1 inteiro; provado com bypass de login |
 | CRITICAL | AP-03 | God Class / God Module | `models.py` (P1) e `AppManager` (P2) |
-| CRITICAL | AP-04 | Endpoint administrativo/destrutivo sem proteção | `/admin/query` com SQL arbitrário (P1), relatório financeiro (P2), escalada de `role` (P3) |
+| CRITICAL | AP-04 | Endpoint administrativo/destrutivo/de privilégio sem proteção | `/admin/query` com SQL arbitrário (P1), relatório financeiro e delete de usuário (P2), criação de admin, troca de `role`/`active` e delete de usuário (P3) |
 | CRITICAL | AP-05 | Armazenamento inseguro de senha | Texto puro (P1), base64 caseiro (P2), MD5 (P3) |
 | CRITICAL | AP-06 | Exposição de dados sensíveis (respostas e logs) | Senha na API (P1/P3), cartão + chave no log (P2) |
 | HIGH | AP-07 | Regra de negócio na camada HTTP (*fat route*) | Os 3 projetos — inclusive o P3 "organizado" |
@@ -167,8 +167,8 @@ O **playbook** tem 17 transformações (T-01 a T-17), todas com código **antes/
 | # | Desafio | Solução |
 |---|---|---|
 | 1 | **Ordenação dentro da mesma severidade.** O template pedia "por arquivo e linha", mas o modelo ordenou por impacto, o que é mais útil para quem lê | O template passou a pedir "maior impacto primeiro; empate por arquivo/linha" |
-| 2 | **Auth guards quebrando o contrato.** O catálogo recomenda proteger rotas destrutivas, mas no P3 isso trancaria todo o CRUD de usuários/tasks atrás de token, e o enunciado exige que *todos os endpoints continuem respondendo* | Regra global 3 refinada (commit `d890df6`): guards apenas em rotas administrativas por nome, de SQL bruto ou de *wipe* em massa. Escaladas de privilégio podem ser neutralizadas sem quebrar o contrato (`role: "admin"` anônimo → 403). O resto vai para **Recommended follow-ups**. *Observação:* o P2 rodou antes desse ajuste, então seu `DELETE /api/users/:id` ficou atrás do `X-Admin-Token`. Mantive assim e registro aqui: pela regra atual, ele iria para follow-ups |
-| 3 | **Falso positivo.** Na auditoria do P3, a skill marcou AP-10 (FK órfã ao apagar categoria) | O baseline da Fase 3 mostrou que o backref do SQLAlchemy já zera `category_id`. A própria skill retirou o achado e anotou a correção no relatório (19 → 18 achados). É a "evidência acima de opinião" funcionando |
+| 2 | **Auditoria e refatoração desalinhadas (feedback da correção).** Na 1ª entrega, o AP-04 do P3 recomendava guarda para criação de admin, troca de role e `DELETE` de usuário, mas a Fase 3 só bloqueou a autoatribuição de admin. `DELETE /users/<id>` e a troca de `active` ficaram sem guarda. A causa era uma regra minha (commit `d890df6`) que limitava guards a rotas `/admin/*` para não quebrar o contrato, ou seja, a Fase 3 estreitava a recomendação em silêncio | Correção no commit `3ada4b7`: **(a)** regra global 4: o relatório é a ordem de serviço da Fase 3, e toda Recommendation é implementada por inteiro; decisões de escopo acontecem na Fase 2, nunca na 3. **(b)** regra global 5: a Recommendation do AP-04 lista cada operação guardada como `METHOD /path` + condição, e criação de conta privilegiada, troca de `role`/`active` e exclusão de usuário estão sempre no escopo. **(c)** T-17 reescrito com 17-A (token estático para `/admin/*`) e 17-B (token assinado no login + `require_auth`/`require_role` + guarda condicional por campo). **(d)** Tabela de conformidade no plano, checagem de conformidade na validação e **matriz de autorização** obrigatória (anônimo → 401, comum → 403, admin → sucesso). Depois disso, **rodei a skill de novo no `task-manager-api` a partir do código legado** (commit `6d1ce62`). P1 e P2 já estavam conformes: as guardas implementadas cobrem exatamente o que seus relatórios recomendam |
+| 3 | **Falso positivo.** Na auditoria do P3, a skill marcou AP-10 (FK órfã ao apagar categoria) | O baseline da Fase 3 mostrou que o backref do SQLAlchemy já zera `category_id`. Na 1ª execução, a skill retirou o achado. Na 2ª, pela regra 4, manteve o achado com uma **nota de correção datada** (a severidade efetiva cai para LOW) e implementou a Recommendation mesmo assim (anulação explícita da FK na mesma transação). Assim, nenhuma recomendação fica sem execução |
 | 4 | **Servidor zumbi na validação.** O reloader do Flask em `debug=True` deixa um processo filho segurando a porta depois do `pkill` | O `validation-protocol.md` manda encerrar **por porta** (`lsof -tiTCP:<port>`), nunca por nome de processo |
 | 5 | **Execução headless.** Rodei a skill de verdade via `claude -p` (ver seção D). Uma regra `Write(path)` em `--allowedTools` não cobre escrita de arquivo (precisa ser `Edit(path)`) | Uso de `--permission-mode acceptEdits` + allowlist de comandos Bash; a confirmação da Fase 2 é dada com `claude -p -c "y"` |
 | 6 | **Skill atualizada no meio de uma sessão.** A sessão continuada do P3 tinha carregado o `SKILL.md` antigo | A resposta de confirmação pediu para reler o `SKILL.md` antes da Fase 3 |
@@ -184,7 +184,7 @@ O **playbook** tem 17 transformações (T-01 a T-17), todas com código **antes/
 |---|---|---|---|---|---|---|---|
 | 1 — code-smells-project | 6 | 5 | 6 | 5 | **22** | nenhuma (verificado com `python -W default`) | [audit-project-1.md](reports/audit-project-1.md) |
 | 2 — ecommerce-api-legacy | 5 | 6 | 5 | 4 | **20** | driver sqlite3 só com callbacks; `.verbose()` em produção | [audit-project-2.md](reports/audit-project-2.md) |
-| 3 — task-manager-api | 4 | 3 | 6 | 5 | **18** | `Query.get()` (16×), `datetime.utcnow()` (20+×) | [audit-project-3.md](reports/audit-project-3.md) |
+| 3 — task-manager-api | 4 | 4 | 6 | 5 | **19** | `Query.get()` (16×), `datetime.utcnow()` (20+×) | [audit-project-3.md](reports/audit-project-3.md) |
 
 **Cobertura da análise manual**: todos os problemas da seção A aparecem nos relatórios da skill (14/14 no P1, 12/12 no P2, 13/13 no P3), bem acima do mínimo de 5 por projeto. A skill ainda achou problemas extras, como o crash do P2 com cartão numérico, o oversell por quantidade negativa no P1 e a ausência de devolução de estoque no cancelamento.
 
@@ -235,7 +235,7 @@ services/ notification (não     ├── controllers/ errors · validators · 
           usado, senha SMTP)    ├── views/       presenters · task · user · category · report · system
 utils/   helpers (meio morto)   ├── services/    token_service (itsdangerous) · notification_service
                                 └── middlewares/ error_handler (JSON) · auth (Bearer)
-15 arquivos · ~1.160 linhas   32 arquivos · ~1.360 linhas
+15 arquivos · ~1.160 linhas   32 arquivos · ~1.300 linhas em src/
 ```
 
 ### Validação independente (fora da skill)
@@ -246,7 +246,7 @@ Além da validação que a própria skill faz, rodei meu próprio smoke test HTT
 |---|---|---|---|---|---|
 | 1 | 39 | 33 | 3: bypass de login por SQLi 200→**401**; `D'Agua` 500→**201**; `/admin/query` anônimo 200→**403** | 3 | **0** (antes: 1) |
 | 2 | 13 | 10 | relatório/delete exigem `X-Admin-Token` | 3 (incl. crash do cartão numérico → 400) | **0** |
-| 3 | 47 | 43 | `password` removido das respostas; token assinado; 404 em JSON | 4 (escalada admin → 403; três 500 → 400) | **0** |
+| 3 | 60 | 48 | 12: matriz de autorização (criação de admin, troca de `role`/`active` e `DELETE` de usuário → **401** anônimo / **403** usuário comum, sucesso só para admin); três 500/415 → 400 | — | **0** (antes: 2) |
 
 Trecho do log de boot do projeto 3 refatorado, rodando com `-W default` e **sem nenhum `DeprecationWarning`/`LegacyAPIWarning`**, que antes apareciam:
 
@@ -285,7 +285,7 @@ INFO Usuário 1 removido com matrículas e pagamentos
 | Relatório segue o template | ✅ | ✅ | ✅ |
 | Cada finding tem arquivo e linhas exatos | ✅ | ✅ | ✅ |
 | Ordenado CRITICAL → LOW | ✅ | ✅ | ✅ |
-| Mínimo de 5 findings | ✅ 22 | ✅ 20 | ✅ 18 |
+| Mínimo de 5 findings | ✅ 22 | ✅ 20 | ✅ 19 |
 | APIs deprecated (se aplicável) | ✅ verificado; nenhuma | ✅ 2 itens | ✅ 2 APIs, todas as ocorrências |
 | Pausa e pede confirmação antes da Fase 3 | ✅ | ✅ | ✅ |
 | **Fase 3 — Refatoração** | | | |
@@ -305,7 +305,7 @@ INFO Usuário 1 removido com matrículas e pagamentos
 
 - **Projeto 1 (Flask, pseudo-MVC):** a skill não se deixou enganar pelos nomes `models.py`/`controllers.py`. Classificou o projeto como *Pseudo-layered* porque `controllers.py` eram views Flask e `models.py` continha regras. Fez a divisão completa em 34 arquivos e corrigiu a injeção sem mudar nenhum envelope de resposta.
 - **Projeto 2 (Express, monolito):** aplicou os itens específicos de Node: AP-11 (callback hell → `async/await` sobre um wrapper promisificado) e transações serializadas, já que o sqlite3 compartilha uma única conexão. Manteve o formato de erro em **texto puro** do legado, conforme a regra "preserve o envelope existente", em vez de impor JSON.
-- **Projeto 3 (Flask, parcialmente organizado):** reconheceu a organização existente (*Partially layered*) e criou o que faltava: a **camada de controllers**, config, middlewares e composition root. Também consolidou `utils/helpers.py` (meio morto) em `validators.py`. Foi o projeto em que a skill mais precisou ponderar segurança × contrato, o que levou ao refinamento da regra 3.
+- **Projeto 3 (Flask, parcialmente organizado):** reconheceu a organização existente (*Partially layered*) e criou o que faltava: a **camada de controllers**, config, middlewares e composition root. Também consolidou `utils/helpers.py` (meio morto) em `validators.py`. Foi o projeto em que a skill mais precisou ponderar segurança × contrato. Depois do feedback da correção, foi re-executado do zero com a regra de que a Recommendation é vinculante. A matriz de autorização ficou 5/5 operações guardadas (401/403/sucesso), e o CRUD de tasks/categorias e as atualizações de usuário sem campos privilegiados continuaram públicos, como o relatório especifica.
 - **Ponto comum:** nos 3 casos a skill subiu o app original para tirar um baseline antes de tocar no código, e se recusou a declarar ✓ sem ter observado o resultado.
 
 ---
@@ -373,7 +373,9 @@ curl -s localhost:3000/api/admin/financial-report -H 'X-Admin-Token: troque-me'
 cd task-manager-api && .venv/bin/python seed.py && .venv/bin/python app.py
 curl -s localhost:5000/tasks | head -c 200
 curl -s localhost:5000/reports/summary | head -c 200
-curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d '{"email":"joao@email.com","password":"1234"}'
+TOKEN=$(curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d '{"email":"joao@email.com","password":"1234"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE localhost:5000/users/3                                   # → 401 (sem token)
+curl -s -o /dev/null -w '%{http_code}\n' -X DELETE localhost:5000/users/3 -H "Authorization: Bearer $TOKEN"  # → 200 (admin)
 ```
 
 Variáveis de ambiente de cada projeto (todas opcionais em desenvolvimento) estão documentadas no `.env.example` e no `README.md` de cada pasta. As mais importantes são `SECRET_KEY`, `ADMIN_TOKEN`, `PORT`/`HOST`, `FLASK_DEBUG` e `PAYMENT_GATEWAY_KEY`.
@@ -381,4 +383,5 @@ Variáveis de ambiente de cada projeto (todas opcionais em desenvolvimento) est�
 O que conferir:
 1. o servidor sobe sem traceback;
 2. as rotas listadas na seção *Endpoint contract* de cada relatório respondem com os mesmos status do original (ver [`reports/validation/`](reports/validation/));
-3. os probes de segurança agora falham: injeção → 401/0 resultados, admin sem token → 403, nenhum campo de senha nas respostas.
+3. os probes de segurança agora falham: injeção → 401/0 resultados, admin sem token → 403, nenhum campo de senha nas respostas;
+4. no P3, cada operação guardada segue a matriz anônimo → 401 / usuário comum → 403 / admin → sucesso (ver [`reports/validation/project-3.md`](reports/validation/project-3.md)).

@@ -1,19 +1,19 @@
-"""User entity and its repository."""
 import hashlib
 import hmac
 
-from sqlalchemy import case, func, select
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from .database import db, utcnow
-from .task_model import STATUS_DONE, Task
+from src.models.database import db, utcnow
 
 ROLE_USER = "user"
 ROLE_ADMIN = "admin"
 ROLE_MANAGER = "manager"
 USER_ROLES = (ROLE_USER, ROLE_ADMIN, ROLE_MANAGER)
+PRIVILEGED_ROLES = (ROLE_ADMIN, ROLE_MANAGER)
+MIN_PASSWORD_LENGTH = 4
 
-_MODERN_HASH_PREFIXES = ("scrypt:", "pbkdf2:")
+PUBLIC_FIELDS = ("id", "name", "email", "role", "active")
+_LEGACY_MD5_LENGTH = 32
 
 
 class User(db.Model):
@@ -28,71 +28,51 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow)
 
     def to_dict(self):
-        """Public representation — never includes the password hash."""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "email": self.email,
-            "role": self.role,
-            "active": self.active,
-            "created_at": str(self.created_at),
-        }
+        data = {field: getattr(self, field) for field in PUBLIC_FIELDS}
+        data["created_at"] = str(self.created_at)
+        return data
 
     def set_password(self, raw_password):
         self.password = generate_password_hash(raw_password)
 
     def check_password(self, raw_password):
-        if self.password.startswith(_MODERN_HASH_PREFIXES):
-            return check_password_hash(self.password, raw_password)
-        # Legacy unsalted MD5 row: verify once, then upgrade the hash transparently.
-        legacy_hash = hashlib.md5(raw_password.encode()).hexdigest()
-        if hmac.compare_digest(self.password, legacy_hash):
+        """Verify the password; legacy unsalted MD5 rows are accepted once and upgraded in place."""
+        if self._is_legacy_hash():
+            legacy = hashlib.md5(raw_password.encode()).hexdigest()
+            if not hmac.compare_digest(self.password, legacy):
+                return False
             self.set_password(raw_password)
             return True
-        return False
+        return check_password_hash(self.password, raw_password)
+
+    def _is_legacy_hash(self):
+        return len(self.password) == _LEGACY_MD5_LENGTH and ":" not in self.password
 
     def is_admin(self):
         return self.role == ROLE_ADMIN
 
 
 class UserRepository:
-    def __init__(self, session):
-        self.session = session
+    def __init__(self, database):
+        self.db = database
 
     def get(self, user_id):
-        return self.session.get(User, user_id)
+        return self.db.session.get(User, user_id)
 
     def get_by_email(self, email):
-        return self.session.scalars(select(User).where(User.email == email)).first()
+        return self.db.session.execute(self.db.select(User).where(User.email == email)).scalar_one_or_none()
+
+    def list_all(self):
+        return self.db.session.execute(self.db.select(User).order_by(User.id)).scalars().all()
 
     def count(self):
-        return self.session.scalar(select(func.count(User.id)))
-
-    def list_with_task_counts(self):
-        stmt = (
-            select(User, func.count(Task.id))
-            .outerjoin(Task, Task.user_id == User.id)
-            .group_by(User.id)
-            .order_by(User.id)
-        )
-        return self.session.execute(stmt).all()
-
-    def productivity(self):
-        """(user, total_tasks, completed_tasks) per user in a single query."""
-        completed = func.coalesce(func.sum(case((Task.status == STATUS_DONE, 1), else_=0)), 0)
-        stmt = (
-            select(User, func.count(Task.id), completed)
-            .outerjoin(Task, Task.user_id == User.id)
-            .group_by(User.id)
-            .order_by(User.id)
-        )
-        return self.session.execute(stmt).all()
+        return self.db.session.execute(self.db.select(self.db.func.count(User.id))).scalar_one()
 
     def add(self, user):
-        self.session.add(user)
+        self.db.session.add(user)
 
     def delete(self, user):
-        self.session.delete(user)
+        self.db.session.delete(user)
 
     def commit(self):
-        self.session.commit()
+        self.db.session.commit()
