@@ -82,11 +82,11 @@ src/
 
 ---
 
-## Padrão 4: Remoção de Consultas SQL de Controllers para Camada Model
+## Padrão 4: Remoção de Consultas SQL de Controllers e Otimização de Health Check
 
-### Antes (Controller Acoplado ao Banco):
+### Antes (Controller Acoplado com Consulta Pesada):
 ```python
-# controllers.py executando queries diretamente na função de rota
+# controllers.py executando queries diretamente e fazendo contagens em rota de infraestrutura
 def health_check():
     db = get_db()
     cursor = db.cursor()
@@ -95,23 +95,29 @@ def health_check():
     return jsonify({"produtos": produtos, "status": "ok"})
 ```
 
-### Depois (Controller Delegando ao Model):
+### Depois (Camada Isolada com Checagem Atômica):
 ```python
-# models/health_model.py
-class HealthModel:
-    @staticmethod
-    def get_system_counts():
+# models/database.py
+def check_connection():
+    """Valida conectividade ativa sem sobrecarregar o banco com contagens."""
+    try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM produtos")
-        return {"produtos": cursor.fetchone()[0]}
+        cursor.execute("SELECT 1")
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
 
 # controllers/health_controller.py
-from models.health_model import HealthModel
+from models.database import check_connection
 
 def health_check():
-    counts = HealthModel.get_system_counts()
-    return jsonify({"counts": counts, "status": "ok"}), 200
+    db_ok = check_connection()
+    status_code = 200 if db_ok else 503
+    return jsonify({
+        "status": "ok" if db_ok else "degraded",
+        "database": "connected" if db_ok else "unreachable"
+    }), status_code
 ```
 
 ---
@@ -287,4 +293,47 @@ def index():
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"status": "ok"}), 200
+```
+
+---
+
+## Padrão 11: Validação e Desvinculação Prévia de Registros Dependentes em Entidades Opcionais
+
+### Antes (Deleção em Cascata Destrutiva ou Violação de Integridade):
+```python
+# models/category.py
+# cascade='all, delete-orphan' apaga todas as tarefas do usuário quando a categoria é excluída!
+tasks = db.relationship('Task', backref='category', cascade='all, delete-orphan')
+
+# controllers/category_controller.py
+def delete_category(cat_id):
+    cat = Category.query.get(cat_id)
+    db.session.delete(cat)  # Exclusão destrói todas as tarefas vinculadas
+    db.session.commit()
+```
+
+### Depois (Validação e Desvinculação com SET NULL):
+```python
+# models/category.py
+# Sem cascade destrutivo em entidades de classificação opcional
+tasks = db.relationship('Task', backref='category', lazy=True)
+
+# models/task.py
+category_id = db.Column(db.Integer, db.ForeignKey('categories.id', ondelete='SET NULL'), nullable=True)
+
+# controllers/category_controller.py
+def delete_category(cat_id):
+    cat = db.session.get(Category, cat_id)
+    if not cat:
+        return {'error': 'Categoria não encontrada'}, 404
+
+    # Validação e desvinculação prévia das entidades dependentes
+    dependent_tasks = Task.query.filter_by(category_id=cat_id).all()
+    if dependent_tasks:
+        for task in dependent_tasks:
+            task.category_id = None
+
+    db.session.delete(cat)
+    db.session.commit()
+    return {'message': 'Categoria deletada'}, 200
 ```

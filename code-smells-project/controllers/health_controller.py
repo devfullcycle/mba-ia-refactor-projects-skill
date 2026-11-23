@@ -1,28 +1,20 @@
 from flask import jsonify
-from models.produto_model import ProdutoModel
-from models.usuario_model import UsuarioModel
-from models.pedido_model import PedidoModel
+from models.database import check_connection
 from config.settings import Config
 
 class HealthController:
     @staticmethod
     def health_check():
-        produtos_total = ProdutoModel.contar()
-        usuarios_total = UsuarioModel.contar()
-        pedidos_total = PedidoModel.contar()
+        db_ok = check_connection()
+        status_code = 200 if db_ok else 503
 
         return jsonify({
-            "status": "ok",
-            "database": "connected",
-            "counts": {
-                "produtos": produtos_total,
-                "usuarios": usuarios_total,
-                "pedidos": pedidos_total
-            },
+            "status": "ok" if db_ok else "degraded",
+            "database": "connected" if db_ok else "unreachable",
             "versao": "1.0.0",
             "ambiente": "development" if Config.DEBUG else "production",
             "debug": Config.DEBUG
-        }), 200
+        }), status_code
 
     @staticmethod
     def index():

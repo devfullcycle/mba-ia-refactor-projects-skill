@@ -10,7 +10,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 |---|---|---|
 | **CRITICAL** | Falhas graves de segurança ou integridade estrutural que permitem comprometimento total do sistema, perda/vazamento de dados, execução remota de código ou violação total da separação de camadas. | SQL Injection via concatenação/interpolação de strings; Rota administrativa de query arbitrária aberta; God Class/God Method que monopoliza banco, roteamento e lógica de múltiplos domínios; Credenciais ou chaves privadas críticas hardcoded (banco prod, gateway de pagamento). |
 | **HIGH** | Fortes violações dos padrões de camadas (MVC) e princípios SOLID, expondo dados sensíveis ou gerando forte acoplamento que inviabiliza testes automatizados e evolução segura. | Queries e transações de banco executadas diretamente dentro de Controllers/Rotas; Segredos de sessão ou SMTP expostos no código; Exposição de senhas/hashes em DTOs/respostas JSON; Criptografia defasada/quebrada (MD5 sem salt, algoritmos caseiros); Exclusão de registros sem integridade referencial/cascade; Estado global mutável compartilhado entre requisições. |
-| **MEDIUM** | Problemas de complexidade algorítmica, gargalos de performance moderados, ofuscação de falhas e violação da coesão de métodos. | Problema de Queries N+1 (queries dentro de loops ou queries aninhadas recursivamente); Complexidade ciclomática elevada (pirâmides de `if/else`); Tratamento silencioso de exceções (`except: pass`, `catch(e) {}` engolindo o erro); Regras de validação de negócio dispersas nos controllers; Inconsistência de respostas de erro. |
+| **MEDIUM** | Problemas de complexidade algorítmica, gargalos de performance moderados, ofuscação de falhas e violação da coesão de métodos. | Problema de Queries N+1 (queries dentro de loops ou queries aninhadas recursivamente); Complexidade ciclomática elevada (pirâmides de `if/else`); Tratamento silencioso de exceções (`except: pass`, `catch(e) {}` engolindo o erro); Regras de validação de negócio dispersas nos controllers; Inconsistência de respostas de erro; Ausência de desvinculação prévia de dependentes em relacionamentos opcionais (deleção destrutiva acidental). |
 | **LOW** | Desvios de padronização, manutenibilidade, legibilidade, dead code e uso de padrões defasados. | Endpoints sem especificação explícita do verbo HTTP; Falta de validação estrita de dados de entrada/saída; Imports não utilizados; Variáveis mágicas ("magic numbers"); Nomenclatura críptica ou abreviada; Uso de APIs obsoletas/deprecated sem quebra imediata. |
 
 ---
@@ -87,7 +87,17 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 8. [MEDIUM] N+1 Query Problem & Nested Queries in Loops
+### 8. [MEDIUM] Destructive Cascade Deletion on Optional Relationships & Missing Prior Disassociation
+- **ID**: `DATA-002`
+- **Sinais de Detecção**:
+  - Exclusão de entidades secundárias ou organizacionais (ex.: categorias, tags, departamentos) configuradas com deleção em cascata (`cascade="all, delete-orphan"` ou `ON DELETE CASCADE`) que destroem entidades principais de negócio (como tarefas ou produtos), quando o relacionamento é opcional (`nullable=True`).
+  - Falta de validação prévia e desvinculação (`SET NULL`) de registros filhos antes de excluir a entidade pai opcional.
+- **Impacto**: Perda de dados e histórico de entidades dependentes por efeito colateral imprevisto na exclusão de uma entidade meramente classificatória.
+- **Remediação**: Adicionar verificação prévia no Controller/Model para validar e desvincular registros dependentes (ex.: atribuir `None` / `NULL` à chave estrangeira) antes de remover a entidade principal opcional, configurando a foreign key com `ON DELETE SET NULL` e removendo `cascade='all, delete-orphan'` de relacionamentos opcionais no ORM.
+
+---
+
+### 9. [MEDIUM] N+1 Query Problem & Nested Queries in Loops
 - **ID**: `PERF-001`
 - **Sinais de Detecção**:
   - Executar uma query SQL de busca em lote e, para cada item iterado, disparar uma ou mais novas queries adicionais no banco (ex.: buscar todos os pedidos e para cada pedido fazer `SELECT * FROM itens_pedido`, e para cada item fazer `SELECT nome FROM produtos`; ou em Express, cascata de callbacks aninhando `SELECT courses` -> `SELECT enrollments` -> `SELECT users` -> `SELECT payments`).
@@ -96,7 +106,16 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 9. [MEDIUM] High Cyclomatic Complexity & Deeply Nested Conditionals
+### 10. [MEDIUM] Heavy Health Check & Unnecessary Table Counts
+- **ID**: `PERF-002`
+- **Sinais de Detecção**:
+  - Endpoint de health check (`/health` ou sondas de liveness/readiness) executando consultas pesadas de negócio, como `COUNT(*)` em múltiplas tabelas (`produtos`, `usuarios`, `pedidos`), scans completos ou agregações analíticas a cada requisição de probe.
+- **Impacto**: Sondas de infraestrutura (Kubernetes, AWS ALB, monitoramento) disparam a cada poucos segundos. Executar contagens totais gera sobrecarga severa de I/O, bloqueios de leitura e risco de *cascading failure* ou timeout sob alta carga.
+- **Remediação**: Limitar a checagem a uma verificação atômica de conectividade (ex.: `SELECT 1;` ou ping do driver/pool), retornando HTTP 200 se saudável ou 503 se degradado. Métricas de contagem devem pertencer a rotas dedicadas de telemetria/dashboard (`/metrics` ou `/admin/stats`).
+
+---
+
+### 11. [MEDIUM] High Cyclomatic Complexity & Deeply Nested Conditionals
 - **ID**: `CODE-001`
 - **Sinais de Detecção**:
   - Métodos com 4 ou mais níveis de indentação de `if/else` aninhados (ex.: checagem de `due_date`, seguida de checagem de data limite, seguida de checagem de status, com múltiplos ramos `else`).
@@ -106,7 +125,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 10. [MEDIUM] Swallowed Exceptions & Silent Failures
+### 12. [MEDIUM] Swallowed Exceptions & Silent Failures
 - **ID**: `CODE-002`
 - **Sinais de Detecção**:
   - Blocos `try: ... except:` sem especificação de tipo de exceção e sem registrar traceback (ex.: `except: return jsonify({'error': 'Erro interno'}), 500`).
@@ -116,7 +135,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 11. [LOW] Deprecated APIs & Obsolete Constructs
+### 13. [LOW] Deprecated APIs & Obsolete Constructs
 - **ID**: `DEP-001`
 - **Sinais de Detecção**:
   - Uso de métodos marcados como obsoletos nas versões modernas das linguagens e bibliotecas:
@@ -127,7 +146,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 12. [LOW] Missing Explicit HTTP Methods & Inconsistent Routing
+### 14. [LOW] Missing Explicit HTTP Methods & Inconsistent Routing
 - **ID**: `ARCH-004`
 - **Sinais de Detecção**:
   - Rotas declaradas sem a lista explícita de métodos HTTP suportados (ex.: `@app.route("/")` ou `@app.route("/health")` sem `methods=["GET"]`).
@@ -136,7 +155,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 13. [LOW] Dead Code & Unused Imports
+### 15. [LOW] Dead Code & Unused Imports
 - **ID**: `CODE-003`
 - **Sinais de Detecção**:
   - Declaração de imports no topo do arquivo que nunca são chamados no restante do módulo (ex.: `import os, sys, json, datetime` onde apenas `datetime` é utilizado).
@@ -145,7 +164,7 @@ Este catálogo orienta a **Fase 2 (Auditoria Arquitetural)** da skill `refactor-
 
 ---
 
-### 14. [LOW] Magic Numbers & Unsanitized Inputs
+### 16. [LOW] Magic Numbers & Unsanitized Inputs
 - **ID**: `CODE-004`
 - **Sinais de Detecção**:
   - Literais numéricos e de strings espalhados no código sem constantes nomeadas (ex.: `200`, `5`, `10000`, `'informatica'`).

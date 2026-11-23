@@ -142,9 +142,28 @@ class TestTaskManagerAPI(unittest.TestCase):
         self.assertEqual(res_put.status_code, 200)
         self.assertEqual(res_put.get_json()['name'], 'QA Automatizado')
 
-        # Delete
+        # Associate a task to verify prior disassociation on delete
+        res_task = self.client.post('/tasks', json={
+            'title': 'Tarefa com categoria temporária',
+            'category_id': cat_id,
+            'user_id': 1
+        })
+        self.assertEqual(res_task.status_code, 201)
+        temp_task_id = res_task.get_json()['id']
+
+        # Delete category
         res_del = self.client.delete(f'/categories/{cat_id}')
         self.assertEqual(res_del.status_code, 200)
+
+        # Confirm category is gone
+        res_cat_check = self.client.get('/categories')
+        cat_ids = [c['id'] for c in res_cat_check.get_json()]
+        self.assertNotIn(cat_id, cat_ids)
+
+        # Confirm task is NOT deleted and its category_id was safely disassociated (set to None)
+        res_task_check = self.client.get(f'/tasks/{temp_task_id}')
+        self.assertEqual(res_task_check.status_code, 200)
+        self.assertIsNone(res_task_check.get_json()['category_id'])
 
     def test_10_reports(self):
         res = self.client.get('/reports/summary')

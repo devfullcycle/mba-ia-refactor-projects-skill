@@ -8,7 +8,7 @@ Stack:   Python 3.x + Flask 3.0.0 + Flask-SQLAlchemy 3.1.1
 Files:   15 analyzed | ~970 lines of code
 
 ## Summary
-CRITICAL: 1 | HIGH: 3 | MEDIUM: 3 | LOW: 3
+CRITICAL: 1 | HIGH: 3 | MEDIUM: 4 | LOW: 3
 
 ## Findings
 
@@ -54,6 +54,12 @@ Description: O método `is_overdue` na classe `Task` implementa múltiplos níve
 Impact: Código difícil de ler e manter, com caminhos de execução redundantes, duplicação de regras de negócio entre modelos e controladores e maior propensão a erros sutis.
 Recommendation: Refatorar o método utilizando Guard Clauses e expressões booleanas diretas (`return bool(self.due_date and self.due_date < now and self.status not in ('done', 'cancelled'))`), centralizando essa lógica no Model e eliminando duplicações nas rotas.
 
+### [MEDIUM] Destructive Cascade Deletion on Optional Categories & Missing Prior Disassociation
+File: routes/report_routes.py:212-225 / models/category.py:13
+Description: No endpoint de remoção de categorias (`DELETE /categories/<id>`), a exclusão do registro de categoria apagava em cascata todas as tarefas associadas (via `cascade='all, delete-orphan'`), em vez de validar dependências e desvincular as tarefas dependentes. Como a associação entre tarefa e categoria é puramente opcional (`category_id` anulável), a exclusão de uma categoria secundária não deve destruir o histórico e o ciclo de vida das tarefas pertencentes aos usuários.
+Impact: Perda acidental de dados de tarefas dos usuários por efeito colateral imprevisto na remoção de uma categoria organizatória.
+Recommendation: Remover `cascade='all, delete-orphan'` do modelo `Category`, implementar a desvinculação prévia explícita no controller (`task.category_id = None`) e declarar `ondelete='SET NULL'` na foreign key de `Task`.
+
 ### [LOW] Deprecated APIs (datetime.utcnow)
 File: models/user.py:14
 Description: O método `datetime.utcnow()` é utilizado como default nos modelos (`user.py:14`, `category.py:11`, `task.py:15-16`) e em cálculos de tempo em `task_routes.py:31, 72, 215, 285`, `report_routes.py:35, 43, 45, 71, 133`, `services/notification_service.py:35` e `utils/helpers.py:38`. Desde o Python 3.12, `datetime.utcnow()` foi formalmente marcado como obsoleto (deprecated).
@@ -73,7 +79,7 @@ Impact: Poluição do escopo global, aumento desnecessário do tempo de carga de
 Recommendation: Remover todos os imports não referenciados e higienizar os módulos.
 
 ================================
-Total: 10 findings
+Total: 11 findings
 ================================
 
 Phase 2 complete. Proceed with refactoring (Phase 3)? [y/n]

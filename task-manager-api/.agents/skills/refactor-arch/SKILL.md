@@ -121,7 +121,7 @@ Após a confirmação positiva do usuário (`y` ou `sim`):
 2. Aplique as transformações recomendadas em `references/refactoring_playbook.md`:
    - Corrigir todas as vulnerabilidades `CRITICAL` (SQL Injection, chaves hardcoded, endpoints arbitrários).
    - Corrigir todas as violações `HIGH` (remoção de queries de controllers, hashing seguro de senhas, remoção de senhas de DTOs, eliminação de estado global mutável, integridade referencial).
-   - Corrigir violações `MEDIUM` (eliminar N+1 via JOINs, simplificar condicionais aninhadas, remover falhas silenciosas).
+   - Corrigir violações `MEDIUM` (eliminar N+1 via JOINs, simplificar condicionais aninhadas, remover falhas silenciosas, otimizar health checks pesados para validação atômica de conectividade, validar e desvincular registros dependentes antes de excluir entidades com relacionamentos opcionais).
    - Corrigir violações `LOW` (atualizar APIs deprecated como `datetime.utcnow()`, declarar verbos HTTP explícitos, limpar dead code e imports não utilizados).
 3. **Validação da Aplicação**:
    - Execute o boot da aplicação refatorada em ambiente local para garantir que inicializa sem erros de sintaxe ou dependência.

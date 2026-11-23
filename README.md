@@ -28,6 +28,8 @@ Antes de automatizar o processo via IA, realizei a inspeção manual dos 3 proje
   - *Relevância*: Risco iminente de race conditions e corrupção de banco em ambientes concorrentes.
 - **[MEDIUM] Problema de N+1 Queries (`models.py:171-233`)**: Consultas aninhadas em loops para buscar itens e produtos de cada pedido.
   - *Relevância*: Explosão de I/O de banco e degradação exponencial de latência.
+- **[MEDIUM] Heavy Health Check com Contagens Desnecessárias (`controllers.py:266-275` / `health_controller.py`)**: O endpoint `/health` executava contagens totais (`SELECT COUNT(*)`) sobre produtos, usuários e pedidos a cada invocação de probe.
+  - *Relevância*: Sondas de infraestrutura (Kubernetes, AWS ALB, monitoramento) disparam periodicamente em intervalos curtos; consultas agregadas desnecessárias causam overhead de I/O e risco de cascading failure sob estresse, quando o correto é validar apenas a conectividade atômica (`SELECT 1`).
 - **[LOW] Métodos HTTP Implícitos e Imports Não Utilizados (`app.py:32`, `database.py:2`)**: Rotas sem declaração de método (`methods=['GET']`) e código morto poluindo o namespace.
 
 ### 2. `ecommerce-api-legacy` (Node.js / Express)
@@ -41,6 +43,8 @@ Antes de automatizar o processo via IA, realizei a inspeção manual dos 3 proje
   - *Relevância*: Vazamento de memória e inconsistência em concorrência.
 - **[MEDIUM] Callback Hell e N+1 Queries (`src/AppManager.js:80-128`)**: Relatório financeiro disparando queries sequenciais aninhadas controladas por contadores manuais.
   - *Relevância*: Risco de requisições travadas, código ilegível e sobrecarga desnecessária do banco.
+- **[MEDIUM] Inconsistência banco  (`src/AppManager.js:131-138`)**: Deletar usuario e deixar registros orfãos nas tabelas correlacionadas.
+ -  *Relevância*: Risco de ter banco de dados inconsistente.
 - **[LOW] Respostas de Erro em Texto Puro (`src/AppManager.js:35-71`)**: Erros retornados como strings avulsas (`"Erro DB"`) sem padronização JSON.
 
 ### 3. `task-manager-api` (Python / Flask + SQLAlchemy)
@@ -52,6 +56,8 @@ Antes de automatizar o processo via IA, realizei a inspeção manual dos 3 proje
   - *Relevância*: Vulnerabilidade contra rainbow tables e vazamento de credenciais na API REST.
 - **[MEDIUM] N+1 Queries em Listagens (`routes/task_routes.py:41-58`)**: Queries individuais executadas para cada usuário e categoria dentro da iteração de tarefas.
   - *Relevância*: Latência desnecessária que escala linearmente com o número de registros.
+- **[MEDIUM] Deleção Destrutiva de Tarefas em Categorias e Falta de Desvinculação Prévia (`routes/report_routes.py:212-225` / `models/category.py:13`)**: A exclusão de uma categoria apagava em cascata todas as tarefas vinculadas via `cascade='all, delete-orphan'` em vez de desvinculá-las previamente, mesmo sendo a categoria um atributo puramente opcional (`category_id` anulável).
+  - *Relevância*: Perda destrutiva e imprevista de tarefas dos usuários durante a exclusão de categorias secundárias de organização.
 - **[LOW] API Deprecated `datetime.utcnow()` (`models/user.py:14`)**: Uso de método marcado como obsoleto a partir do Python 3.12 gerando datas sem fuso horário (naive).
   - *Relevância*: Deprecation warnings contínuos e inconsistências temporais.
 
@@ -71,7 +77,7 @@ Estruturei a skill em torno de **3 fases estritas e sequenciais** no [SKILL.md](
 Incluí 10 anti-patterns fundamentais cobrindo o ciclo de vida e a saúde de código legado:
 - **Segurança**: Injeção de SQL (`SEC-001`), Credenciais Hardcoded (`SEC-002`), Criptografia Quebrada/Insegura (`SEC-003`).
 - **Arquitetura**: God Class/God File (`ARCH-001`), Operações de Banco em Controllers/Rotas (`ARCH-002`), Estado Global Mutável (`ARCH-003`), Falta de Rotas Explícitas (`ARCH-004`).
-- **Performance & Dados**: N+1 Query Problem (`PERF-001`), Deleção Insegura sem Integridade Referencial (`DATA-001`).
+- **Performance & Dados**: N+1 Query Problem (`PERF-001`), Heavy Health Check (`PERF-002`), Deleção Insegura sem Integridade Referencial (`DATA-001`), Deleção Destrutiva em Relacionamentos Opcionais sem Desvinculação Prévia (`DATA-002`).
 - **Qualidade & Manutenção**: Tratamento Inconsistente de Erros (`CODE-002`), Alta Complexidade Ciclomática (`CODE-001`), APIs Deprecated (`CODE-005`).
 
 *Justificativa*: Esses padrões mapeiam diretamente as maiores fontes de vulnerabilidades, débitos técnicos e gargalos de performance comuns em sistemas legados.
@@ -95,9 +101,9 @@ A execução da skill auditou com precisão os 3 projetos, identificando e sanan
 
 | Projeto | Stack | CRITICAL | HIGH | MEDIUM | LOW | Total Inicial | Total Pós-Refactor |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **code-smells-project** | Python / Flask | 3 | 4 | 3 | 3 | **13** | **0** |
+| **code-smells-project** | Python / Flask | 3 | 4 | 4 | 3 | **14** | **0** |
 | **ecommerce-api-legacy** | Node.js / Express | 2 | 4 | 2 | 2 | **10** | **0** |
-| **task-manager-api** | Python / Flask + SQLAlchemy | 1 | 3 | 3 | 3 | **10** | **0** |
+| **task-manager-api** | Python / Flask + SQLAlchemy | 1 | 3 | 4 | 3 | **11** | **0** |
 
 Os relatórios detalhados encontram-se salvos em:
 - [reports/audit-project-1.md](mba-ia-refactor-projects-skill/reports/audit-project-1.md)
@@ -128,7 +134,7 @@ Os relatórios detalhados encontram-se salvos em:
 - [x] Relatório seguiu o template padronizado em Markdown
 - [x] Cada finding possui arquivo e intervalo exato de linhas
 - [x] Findings ordenados estritamente por severidade (CRITICAL → LOW)
-- [x] Mínimo de 5 findings identificados por projeto (obtidos 13, 10 e 10)
+- [x] Mínimo de 5 findings identificados por projeto (obtidos 14, 10 e 11)
 - [x] Detecção de APIs obsoletas/deprecated incluída (`datetime.utcnow`)
 - [x] Pausa mandatória e solicitação de confirmação humana executada
 
@@ -143,9 +149,9 @@ Os relatórios detalhados encontram-se salvos em:
 
 ### Evidências de Execução Pós-Refatoração
 Após a refatoração, as aplicações foram executadas e validadas:
-- **`code-smells-project`**: Inicialização limpa via Flask na porta 5000; endpoints `/produtos`, `/usuarios`, `/pedidos` e `/health` respondendo 200 OK com payload sanitizado; endpoint `/admin/query` desativado com segurança.
+- **`code-smells-project`**: Inicialização limpa via Flask na porta 5000; endpoints `/produtos`, `/usuarios`, `/pedidos` e `/health` respondendo 200 OK com payload sanitizado e verificação atômica de conectividade com o banco (`SELECT 1`), eliminando contagens pesadas desnecessárias nas tabelas; endpoint `/admin/query` desativado com segurança.
 - **`ecommerce-api-legacy`**: Inicialização via Node.js na porta 3000; rotas de checkout, listagem de cursos e relatório financeiro funcionando sem vazamento de cartão ou credenciais.
-- **`task-manager-api`**: Inicialização via Flask; rotas `/tasks`, `/users` e `/reports` operando através dos novos controllers com integridade referencial preservada e zero regressão.
+- **`task-manager-api`**: Inicialização via Flask; rotas `/tasks`, `/users` e `/reports` operando através dos novos controllers com integridade referencial preservada, desvinculação segura de tarefas ao remover categorias (`SET NULL`) e zero regressão.
 
 ### Comportamento em Stacks Diferentes
 A skill demonstrou adaptabilidade robusta: reconheceu naturalmente as convenções idiomáticas do Python (Blueprints, SQLAlchemy, decoradores) e do ecossistema Node.js (CommonJS/ES Modules, Express Routers, middlewares de erro `(err, req, res, next)`), aplicando as mesmas diretrizes arquiteturais sem contaminação sintática.

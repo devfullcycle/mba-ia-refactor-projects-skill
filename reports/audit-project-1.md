@@ -8,7 +8,7 @@ Stack:   Python 3.13 + Flask 3.1.1
 Files:   4 analyzed | ~780 lines of code
 
 ## Summary
-CRITICAL: 3 | HIGH: 4 | MEDIUM: 3 | LOW: 3
+CRITICAL: 3 | HIGH: 4 | MEDIUM: 4 | LOW: 3
 
 ## Findings
 
@@ -60,6 +60,12 @@ Description: Tanto em `get_pedidos_usuario` quanto em `get_todos_pedidos`, o có
 Impact: Explosão na quantidade de requisições de I/O ao banco de dados (1 + N + M queries), causando degradação exponencial de latência e consumo desnecessário de recursos à medida que o volume de pedidos cresce.
 Recommendation: Reescrever a consulta utilizando `JOIN` (`pedidos LEFT JOIN itens_pedido ON ... LEFT JOIN produtos ON ...`) para recuperar todos os pedidos e seus respectivos itens em uma única viagem ao banco de dados.
 
+### [MEDIUM] Heavy Health Check & Unnecessary Table Counts
+File: controllers.py:266-275
+Description: A rota `/health` executava contagens completas em lote (`SELECT COUNT(*) FROM produtos`, `usuarios`, `pedidos`) a cada requisição HTTP de verificação de integridade da aplicação.
+Impact: Endpoints de health check são frequentemente consultados por orquestradores (Kubernetes, balanceadores de carga, probes de monitoramento) em intervalos de poucos segundos. Realizar leituras contínuas de contagem consome I/O, conexões e gera risco de degradação e cascading failures sob carga alta.
+Recommendation: O health check deve realizar exclusivamente a validação atômica de conectividade com o banco (`SELECT 1;`), retornando HTTP 200 quando saudável ou 503 quando indisponível. Métricas analíticas ou contagens totais devem ser movidas para endpoints específicos de telemetria/dashboards (`/metrics`).
+
 ### [MEDIUM] High Cyclomatic Complexity & Deeply Nested Business Logic
 File: controllers.py:24-63
 Description: O método `criar_produto` (e análogo em `models.py:133-169` para `criar_pedido`) acumula múltiplas verificações manuais de campos nulos, ranges numéricos, comprimentos de string e checagem de listas literais em cascata, combinando validação de entrada, persistência e regra de negócio.
@@ -91,7 +97,7 @@ Impact: Poluição do namespace, distração cognitiva para desenvolvedores e ac
 Recommendation: Remover todos os imports não referenciados e higienizar os módulos.
 
 ================================
-Total: 13 findings
+Total: 14 findings
 ================================
 
 ---
@@ -161,6 +167,10 @@ CRITICAL: 0 | HIGH: 0 | MEDIUM: 0 | LOW: 0
 13. [LOW] Dead Code & Unused Imports (CODE-003)
     Status: RESOLVIDO
     Evidência: Imports não utilizados removidos de todos os módulos.
+
+14. [MEDIUM] Heavy Health Check & Unnecessary Table Counts (PERF-002)
+    Status: RESOLVIDO
+    Evidência: `HealthController.health_check()` em `controllers/health_controller.py` refatorado para utilizar `check_connection()` de `models/database.py`, executando exclusivamente a validação atômica `SELECT 1` e retornando HTTP 200 (conectado) ou 503 (degradado), sem consultas de contagem ou sobrecarga nas tabelas.
 
 ================================
 Total: 0 remaining findings

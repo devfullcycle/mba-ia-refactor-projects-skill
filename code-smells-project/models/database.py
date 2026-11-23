@@ -19,6 +19,16 @@ def close_db(e=None):
     if db is not None:
         db.close()
 
+def check_connection():
+    """Verifica a conectividade ativa com o banco de dados via consulta atômica (SELECT 1)."""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT 1")
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+
 def init_db(app=None):
     """Inicializa as tabelas do schema e popula dados iniciais com integridade referencial."""
     db_path = getattr(Config, "DB_PATH", "loja.db")

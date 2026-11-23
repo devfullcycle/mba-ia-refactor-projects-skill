@@ -80,6 +80,13 @@ class CategoryController:
             return {'error': 'Categoria não encontrada'}, 404
 
         try:
+            # Validação e desvinculação prévia dos registros dependentes (tasks)
+            dependent_tasks = Task.query.filter_by(category_id=cat_id).all()
+            if dependent_tasks:
+                logger.info(f"Desvinculando {len(dependent_tasks)} tarefa(s) da categoria ID {cat_id}")
+                for task in dependent_tasks:
+                    task.category_id = None
+
             db.session.delete(cat)
             db.session.commit()
             logger.info(f"Categoria deletada: ID {cat_id}")

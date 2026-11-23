@@ -134,6 +134,7 @@ src/
 ## 4. Regras de Compatibilidade e Semântica
 
 Ao refatorar qualquer projeto:
-1. **Preservar Contratos de API**: Todos os endpoints existentes, métodos HTTP, parâmetros aceitos e formato das respostas JSON válidas devem continuar respondendo conforme os contratos originais da aplicação.
+1. **Preservar Contratos de API de Negócio**: Todos os endpoints de negócio existentes, métodos HTTP, parâmetros aceitos e formato das respostas JSON válidas devem continuar respondendo conforme os contratos originais da aplicação.
+   - *Exceção para Endpoints de Infraestrutura / Health Checks (`/health`)*: Devem ser simplificados para validação atômica de conectividade (`SELECT 1`), eliminando contagens agregadas (`COUNT(*)`) ou scans desnecessários que sobrecarregam o banco em sondas periódicas (probes).
 2. **Preservar a Base de Dados**: As tabelas e dados seed pré-existentes devem ser mantidos e acessíveis.
 3. **Validar a Execução**: A aplicação deve inicializar sem falhas e responder a testes de saúde e chamadas aos endpoints.

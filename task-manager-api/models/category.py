@@ -10,7 +10,7 @@ class Category(db.Model):
     color = db.Column(db.String(7), default='#000000')
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    tasks = db.relationship('Task', backref='category', cascade='all, delete-orphan', lazy=True)
+    tasks = db.relationship('Task', backref='category', lazy=True)
 
     def to_dict(self):
         return {
