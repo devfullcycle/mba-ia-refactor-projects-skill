@@ -36,11 +36,15 @@ Paths are relative to this SKILL.md. Read a file fully the first time you need i
 1. **No file is modified, created, moved, or deleted before the user confirms at the end of Phase 2.** Phases 1–2 are read-only (running read-only shell commands such as `ls`, `grep`, `wc`, `cat`, a dependency listing, or booting the *original* app to capture a baseline is allowed).
 2. **Evidence over opinion.** Every finding cites `file:line` (or `file:start-end`) that you actually read. Never invent line numbers — re-open the file to confirm before writing the report.
 3. **Preserve the public contract.** Routes (method + path), request field names, response envelope shapes, status codes for the happy path, and the documented run command (`python app.py`, `npm start`, …) must keep working. The only allowed contract changes are security fixes (e.g., no longer returning password hashes, protecting admin endpoints) — each must be listed under "Intentional behavior changes" in the Phase 3 summary.
-   - **Auth guards are added only where they cannot break legitimate clients:** endpoints that are administrative by name/namespace (`/admin/*`, `.../admin/...`), that execute raw SQL, or that wipe data in bulk. Ordinary CRUD endpoints that were public stay public (requiring a token there would break every existing client); report the missing authorization as a finding and list it under "Recommended follow-ups" in the Phase 3 summary instead of locking it down.
-   - Privilege-escalation inputs can be neutralized without breaking the contract (e.g., ignore or reject a client-supplied `role: "admin"` on anonymous sign-up) — list it as an intentional change.
-4. **Adapt to the starting point.** A single-file monolith needs a full split; a partially layered project needs targeted moves (e.g., extract business logic from routes into controllers, centralize error handling) — do not rewrite what already complies with `mvc-guidelines.md`.
-5. **Stay inside the project directory.** Never touch the skill folder itself (`.claude/`), VCS metadata, lock files, virtualenvs, or `node_modules/`.
-6. Print the phase banners exactly as shown below so the run is easy to follow in the terminal.
+4. **The audit report is binding on Phase 3.** Every Recommendation in the report is implemented in full, on every endpoint/file it names — Phase 3 never silently narrows a recommendation. Scope decisions (e.g., "is adding auth here worth the contract change?") are made **in Phase 2**, when writing the Recommendation; after the user confirms, the report is the work order. If Phase 3 discovers that a recommendation is wrong (a false positive proven by the baseline), correct the report explicitly with a dated note — never by leaving it unimplemented.
+5. **Authorization rule (AP-04).** In Phase 2, the AP-04 Recommendation must list **explicitly, endpoint by endpoint** (`METHOD /path` + the condition, e.g. "only when the body changes `role`"), every operation that receives a guard. These operations are **always** in scope and must be guarded in Phase 3:
+   - administrative endpoints (`/admin/*`), raw-SQL execution, bulk data wipes;
+   - **privilege and account-state changes:** creating a privileged account (e.g. `role: "admin"`), changing a user's `role`, activating/deactivating an account (`active`, `enabled`, `status`), and deleting user accounts;
+   - any other destructive operation the Description cites as part of the finding.
+   Ordinary resource CRUD (e.g., tasks, categories, products) that is not named in the Recommendation stays public and goes to "Recommended follow-ups". Each guarded endpoint is an intentional behavior change: it must answer **401** without credentials (or 403 when the guard is a static admin token, T-17A), **403** for an authenticated non-privileged caller (when the app has users), and keep its original status/body for an authorized caller — implement it with T-17 and validate all three cases.
+6. **Adapt to the starting point.** A single-file monolith needs a full split; a partially layered project needs targeted moves (e.g., extract business logic from routes into controllers, centralize error handling) — do not rewrite what already complies with `mvc-guidelines.md`.
+7. **Stay inside the project directory.** Never touch the skill folder itself (`.claude/`), VCS metadata, lock files, virtualenvs, or `node_modules/`.
+8. Print the phase banners exactly as shown below so the run is easy to follow in the terminal.
 
 ---
 
@@ -95,6 +99,7 @@ Sanity gates before printing (fix the report if any fails):
 - At least one finding per catalog entry whose signal matched and was confirmed — do not silently drop findings.
 - Every finding has a real `file:line`.
 - Summary counts equal the number of findings per severity.
+- Every Recommendation is concrete enough to be executed and verified. The AP-04 Recommendation lists each guarded operation as `METHOD /path` (+ condition), covering everything required by Global rule 5.
 
 Then **STOP and ask**, using the `AskUserQuestion` tool when available (otherwise print the line and wait for the user's reply):
 
@@ -119,6 +124,8 @@ Follow `validation-protocol.md` §1: boot the **original** app, exercise every e
 ### Step 1 — Plan
 Write a short plan (print it, do not ask again): target directory tree from `mvc-guidelines.md` for the detected stack, and the list of playbook transformations you will apply, mapped to finding IDs. For partially layered projects, state explicitly which existing modules are kept, which are moved, and which are split.
 
+Include a **Recommendation conformance table**: one row per finding → the exact change that implements its Recommendation. For AP-04, one row per guarded operation (`METHOD /path` + condition → guard → required role). Nothing in the report may be missing from this table.
+
 ### Step 2 — Execute
 Apply transformations in this order (it minimizes broken intermediate states):
 
@@ -140,8 +147,9 @@ Follow `validation-protocol.md` §2–§4:
 1. Boot the refactored app with the original run command — it must start without errors or tracebacks.
 2. Re-run the baseline request set and compare: same status codes and response keys, except for the intentional behavior changes you listed.
 3. Re-scan the code with the catalog's detection signals and confirm the findings are gone (list any accepted residuals with a reason).
-4. If anything fails, fix and re-validate (up to 3 iterations); if still failing, report it honestly — never claim success that you did not observe.
-5. Stop every server you started and delete database files created by the validation run.
+4. **Recommendation conformance check:** re-read every Recommendation in the saved report and confirm, with `file:line` in the refactored code, that each one is implemented in full. For every AP-04 guarded operation, send three requests and record them in an authorization matrix: anonymous → 401 (403 for a static admin token), authenticated non-privileged user → 403 (when the app has users), authorized caller → original success status. Any gap is a ✗. Fix it and re-validate — it is not a follow-up.
+5. If anything fails, fix and re-validate (up to 3 iterations); if still failing, report it honestly — never claim success that you did not observe.
+6. Stop every server you started and delete database files created by the validation run.
 
 Print:
 
@@ -158,12 +166,16 @@ PHASE 3: REFACTORING COMPLETE
 ## Intentional behavior changes
 <list, or "None">
 
+## Authorization matrix
+<METHOD /path (condition) | anonymous | non-privileged | authorized>  (one line per AP-04 guarded operation, or "No AP-04 finding">
+
 ## Recommended follow-ups
-<findings deliberately not fully fixed to preserve the contract (e.g., auth on public CRUD), or "None">
+<improvements beyond the report's Recommendations (e.g., auth on ordinary CRUD that the report did not name), or "None". Never a Recommendation from the report: those are mandatory>
 
 ## Validation
   ✓|✗ Application boots without errors (<command>)
   ✓|✗ All <N> endpoints respond as in baseline (<passed>/<N>)
+  ✓|✗ Every report Recommendation implemented (<implemented>/<total>; AP-04 guards <guarded>/<named>)
   ✓|✗ Zero catalog anti-patterns remaining (<residuals or "none">)
 ================================
 ```

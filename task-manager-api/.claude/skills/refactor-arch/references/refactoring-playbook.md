@@ -20,7 +20,7 @@ Concrete transformations, each with **before/after** code. Python and JavaScript
 | T-14 | Centralized input validation | AP-14 |
 | T-15 | Named constants / enums for magic values | AP-19, AP-15 |
 | T-16 | Hygiene: logging, naming, dead code, idioms | AP-20 – AP-23 |
-| T-17 | Protect administrative endpoints | AP-04, AP-12 (fake auth) |
+| T-17 | Protect administrative, destructive and privilege endpoints (every operation named in the AP-04 Recommendation) | AP-04, AP-12 (fake auth) |
 
 ---
 
@@ -560,7 +560,17 @@ const { usr: name, eml: email, pwd: password, c_id: courseId, card: cardNumber }
 
 ---
 
-## T-17 Protect administrative endpoints
+## T-17 Protect administrative, destructive and privilege endpoints
+
+**Rule:** apply a guard to **every** operation listed in the AP-04 Recommendation of the report: same `METHOD /path`, same condition, same required role. Phase 3 does not drop or narrow any of them (SKILL.md Global rules 4–5). Pick the mechanism by what the project has:
+
+| Situation | Mechanism |
+|---|---|
+| The app has users + login (or a fake token) | **17-B** signed token issued at login + `require_auth` / `require_role` guards |
+| No user model, only operational/admin routes | **17-A** static admin token from env (`X-Admin-Token`) |
+| Arbitrary SQL endpoint | **17-A** + read-only single `SELECT` (or remove the endpoint) |
+
+### 17-A Admin token for operational endpoints (no user model)
 
 **Before:**
 ```python
@@ -584,4 +594,119 @@ def require_admin_token(settings):
 ```
 - Endpoint disabled (403) unless `ADMIN_TOKEN` is configured.
 - Arbitrary SQL endpoints: restrict to a **single read-only SELECT** (reject `;`, run on a read-only connection / `PRAGMA query_only = ON`) or remove the endpoint and document it as an intentional behavior change.
-- Fake tokens (`'fake-jwt-token-' + id`): keep the response field for compatibility only if needed, but generate a signed token (`itsdangerous` ships with Flask; `crypto.createHmac` in Node) and document it.
+
+### 17-B Signed login token + role guards (app with users)
+
+**Before** (token is never checked; anyone deletes users, changes roles, deactivates accounts):
+```python
+@user_bp.route('/login', methods=['POST'])
+def login():
+    ...
+    return jsonify({'user': user.to_dict(), 'token': 'fake-jwt-token-' + str(user.id)})
+
+@user_bp.route('/users/<int:user_id>', methods=['DELETE'])
+def delete_user(user_id): ...                       # no guard
+
+@user_bp.route('/users/<int:user_id>', methods=['PUT'])
+def update_user(user_id):
+    ...
+    if 'role' in data: user.role = data['role']     # privilege escalation
+    if 'active' in data: user.active = data['active']
+```
+**After:**
+```python
+# services/token_service.py — itsdangerous ships with Flask (no new dependency)
+class TokenService:
+    def __init__(self, secret_key, max_age):
+        self._s = URLSafeTimedSerializer(secret_key, salt="auth")
+        self._max_age = max_age
+    def issue(self, user_id): return self._s.dumps({"uid": user_id})
+    def verify(self, token):
+        try: return self._s.loads(token, max_age=self._max_age)["uid"]
+        except (BadSignature, SignatureExpired): return None
+
+# middlewares/auth.py
+def build_guards(tokens, users):
+    def current_user():
+        header = request.headers.get("Authorization", "")
+        uid = tokens.verify(header[7:]) if header.startswith("Bearer ") else None
+        user = users.get(uid) if uid else None
+        return user if user and user.active else None
+
+    def require_auth(view):                      # 401 when there is no valid token
+        @wraps(view)
+        def wrapper(*a, **kw):
+            g.current_user = current_user()
+            if g.current_user is None: raise UnauthorizedError("Autenticação necessária")
+            return view(*a, **kw)
+        return wrapper
+
+    def require_role(*roles):                    # 403 when authenticated but not allowed
+        def decorator(view):
+            @wraps(view)
+            @require_auth
+            def wrapper(*a, **kw):
+                if g.current_user.role not in roles: raise ForbiddenError("Acesso negado")
+                return view(*a, **kw)
+            return wrapper
+        return decorator
+
+    def optional_auth(view):                     # resolves caller for conditional guards
+        @wraps(view)
+        def wrapper(*a, **kw):
+            g.current_user = current_user()
+            return view(*a, **kw)
+        return wrapper
+    return require_auth, require_role, optional_auth
+
+# views/user_routes.py — unconditional guard
+@bp.delete("/users/<int:user_id>")
+@require_role(ROLE_ADMIN)
+def delete_user(user_id):
+    controller.delete_user(user_id)
+    return jsonify({"message": "Usuário deletado com sucesso"}), 200
+
+# views/user_routes.py — conditional guard: the route stays public, the rule lives in the controller
+@bp.put("/users/<int:user_id>")
+@optional_auth
+def update_user(user_id):
+    user = controller.update_user(user_id, request.get_json(silent=True), caller=g.current_user)
+    return jsonify(user.to_dict()), 200
+
+# controllers/user_controller.py
+PRIVILEGED_FIELDS = ("role", "active")
+def update_user(self, user_id, data, caller):
+    if any(f in data for f in PRIVILEGED_FIELDS):
+        if caller is None: raise UnauthorizedError("Autenticação necessária")
+        if caller.role != ROLE_ADMIN: raise ForbiddenError("Apenas administradores podem alterar role/active")
+    ...
+```
+**Node/Express equivalent:**
+```js
+// middlewares/auth.js
+const requireAuth = (tokens, users) => asyncHandler(async (req, res, next) => {
+  const [, token] = (req.headers.authorization || '').split(' ');
+  const userId = token && tokens.verify(token);            // HMAC-signed, crypto.createHmac
+  req.user = userId ? await users.findById(userId) : null;
+  if (!req.user) throw new UnauthorizedError('Autenticação necessária');
+  next();
+});
+const requireRole = (...roles) => (req, res, next) =>
+  roles.includes(req.user.role) ? next() : next(new ForbiddenError('Acesso negado'));
+
+router.delete('/users/:id', requireAuth(tokens, users), requireRole('admin'), asyncHandler(...));
+```
+
+Checklist for 17-B:
+- Keep the login response shape; only the `token` value changes (signed and expiring). Document it as an intentional change.
+- The seed must contain at least one admin and one non-admin user, so the guards can be exercised.
+- **Validation matrix**, mandatory for every guarded operation:
+
+  | Operation | anonymous | non-admin token | admin token |
+  |---|---|---|---|
+  | `DELETE /users/<id>` | 401 | 403 | 200 (as baseline) |
+  | `PUT /users/<id>` with `role`/`active` | 401 | 403 | 200 (as baseline) |
+  | `PUT /users/<id>` without privileged fields | 200 (as baseline) | 200 | 200 |
+  | `POST /users` with `role: "admin"` | 401 | 403 | 201 (as baseline) |
+
+- Operations **not** named in the Recommendation (e.g., task/category CRUD) stay public and go to "Recommended follow-ups".

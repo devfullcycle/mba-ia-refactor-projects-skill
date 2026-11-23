@@ -47,14 +47,22 @@ Raise or lower a finding by **one** level only with a written reason in the find
 - **Why:** impossible to test in isolation; any change risks every feature (violates SRP).
 - **Fix:** T-03.
 
-### AP-04 Unprotected administrative / destructive endpoints
+### AP-04 Unprotected administrative / destructive / privilege endpoints
 - **Signals:**
-  - Routes containing `admin`, `reset`, `query`, `exec`, `debug`, `delete` without an authentication/authorization check
+  - Routes containing `admin`, `reset`, `query`, `exec`, `debug` without an authentication/authorization check
   - Endpoint that executes SQL received from the request (`cursor.execute(request...` / `execute(dados["sql"])`)
   - Endpoint that wipes tables (`DELETE FROM` without `WHERE`)
+  - **Privilege / account-state changes without a guard:** a body field such as `role`, `is_admin`, `tipo`, `permissions` accepted on create/update (`data.get('role')`, `req.body.role`); `active` / `enabled` / `status` of a *user account* changed by any caller; deletion of user accounts (`DELETE /users/<id>`, `db.session.delete(user)`)
+  - Login that returns a token that no route ever verifies (`'fake-jwt-token-' + id`): the guard does not exist
 - **Confirm:** no decorator/middleware/guard checks identity or role before the action.
-- **Why:** remote arbitrary SQL execution or full data loss by any anonymous caller.
-- **Fix:** T-17 (and remove arbitrary-SQL capability or restrict to read-only behind admin auth).
+- **Why:** remote arbitrary SQL execution, full data loss, or privilege escalation by any anonymous caller.
+- **Recommendation format (mandatory):** list every operation that will be guarded, one per line, as `METHOD /path` + condition + required role. Example:
+  - `POST /users` when `role` is privileged → admin
+  - `PUT /users/<id>` when the body changes `role` or `active` → admin
+  - `DELETE /users/<id>` → admin
+
+  Every operation listed here is mandatory work for Phase 3 (SKILL.md Global rules 4–5).
+- **Fix:** T-17 (and remove arbitrary-SQL capability or restrict it to read-only behind admin auth).
 
 ### AP-05 Insecure password storage
 - **Signals:**
