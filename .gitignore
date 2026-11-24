@@ -10,3 +10,6 @@ venv/
 # SQLite
 *.db
 instance/
+
+# Outros
+code-smells-project/anthropics-skills/
