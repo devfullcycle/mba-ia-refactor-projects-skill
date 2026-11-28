@@ -44,7 +44,7 @@ Re-send the exact baseline request set to the refactored app and compare:
 Also send the security probes that motivated CRITICAL findings and confirm they are now neutralized, e.g.:
 - SQL injection: login with `"' OR 1=1 --"` → 401, search with `') OR 1=1 --` → empty/normal result, names with apostrophes → 201.
 - Secrets: `/health` (or equivalent) no longer returns secret/config values.
-- Authorization: for **every** operation listed in the AP-04 Recommendation of the report, run the three-case matrix: anonymous → 401 (403 for a static admin-token guard), authenticated non-privileged → 403 (apps with users), authorized → the baseline status/body. Obtain tokens through the app's own login (seed users) or the configured admin token. A guarded operation missing from the matrix, or answering 2xx anonymously, fails the validation.
+- Authorization: for **every** operation listed in the AP-04 Recommendation of the report, run the matrix: anonymous → 401 (403 for a static admin-token guard), authenticated non-privileged → 403 (apps with users; for owner-or-admin guards, a *different* non-admin user), the account owner → baseline status (owner-or-admin guards), admin → the baseline status/body. For apps with login, also replay the account-takeover chain (change another user's — the admin's — password/email without being them or an admin, then log in with it): it must fail at the update. Obtain tokens through the app's own login (seed users) or the configured admin token. A guarded operation missing from the matrix, or answering 2xx anonymously, fails the validation.
 
 For baseline comparison, replay guarded operations **with authorized credentials**. The happy-path contract must still match the baseline for an authorized caller.
 

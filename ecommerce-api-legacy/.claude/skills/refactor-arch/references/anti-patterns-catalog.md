@@ -53,12 +53,14 @@ Raise or lower a finding by **one** level only with a written reason in the find
   - Endpoint that executes SQL received from the request (`cursor.execute(request...` / `execute(dados["sql"])`)
   - Endpoint that wipes tables (`DELETE FROM` without `WHERE`)
   - **Privilege / account-state changes without a guard:** a body field such as `role`, `is_admin`, `tipo`, `permissions` accepted on create/update (`data.get('role')`, `req.body.role`); `active` / `enabled` / `status` of a *user account* changed by any caller; deletion of user accounts (`DELETE /users/<id>`, `db.session.delete(user)`)
+  - **Account takeover without a guard:** `password` / `email` / `username` of an existing user changed by a caller that is neither that user nor an admin (`user.set_password(data['password'])`, `user.email = data['email']` in an update route with no identity check). Changing an admin's password and logging in yields an admin token, so this is privilege escalation too
   - Login that returns a token that no route ever verifies (`'fake-jwt-token-' + id`): the guard does not exist
 - **Confirm:** no decorator/middleware/guard checks identity or role before the action.
 - **Why:** remote arbitrary SQL execution, full data loss, or privilege escalation by any anonymous caller.
 - **Recommendation format (mandatory):** list every operation that will be guarded, one per line, as `METHOD /path` + condition + required role. Example:
   - `POST /users` when `role` is privileged → admin
   - `PUT /users/<id>` when the body changes `role` or `active` → admin
+  - `PUT /users/<id>` when the body changes `password` or `email` → the user themself or an admin (owner-or-admin)
   - `DELETE /users/<id>` → admin
 
   Every operation listed here is mandatory work for Phase 3 (SKILL.md Global rules 4–5).

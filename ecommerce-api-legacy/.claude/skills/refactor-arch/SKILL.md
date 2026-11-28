@@ -40,8 +40,10 @@ Paths are relative to this SKILL.md. Read a file fully the first time you need i
 5. **Authorization rule (AP-04).** In Phase 2, the AP-04 Recommendation must list **explicitly, endpoint by endpoint** (`METHOD /path` + the condition, e.g. "only when the body changes `role`"), every operation that receives a guard. These operations are **always** in scope and must be guarded in Phase 3:
    - administrative endpoints (`/admin/*`), raw-SQL execution, bulk data wipes;
    - **privilege and account-state changes:** creating a privileged account (e.g. `role: "admin"`), changing a user's `role`, activating/deactivating an account (`active`, `enabled`, `status`), and deleting user accounts;
+   - **credential and identity changes on an existing account:** changing `password` or `email` (or any other login identifier, e.g. `username`) of a user is allowed **only to that user or to an admin** (owner-or-admin guard). Leaving it public lets anyone reset an admin's password, log in and obtain an admin token — that is the same privilege escalation as changing `role`;
    - any other destructive operation the Description cites as part of the finding.
-   Ordinary resource CRUD (e.g., tasks, categories, products) that is not named in the Recommendation stays public and goes to "Recommended follow-ups". Each guarded endpoint is an intentional behavior change: it must answer **401** without credentials (or 403 when the guard is a static admin token, T-17A), **403** for an authenticated non-privileged caller (when the app has users), and keep its original status/body for an authorized caller — implement it with T-17 and validate all three cases.
+   Before writing the Recommendation, walk every route that writes to the user/account table and check each writable field against this list; a field that can be used to take over an account is never "ordinary CRUD".
+   Ordinary resource CRUD (e.g., tasks, categories, products) that is not named in the Recommendation stays public and goes to "Recommended follow-ups". Each guarded endpoint is an intentional behavior change: it must answer **401** without credentials (or 403 when the guard is a static admin token, T-17A), **403** for an authenticated non-privileged caller (when the app has users) — for an owner-or-admin guard that means **another** non-admin user — and keep its original status/body for an authorized caller (admin, and also the account owner for owner-or-admin guards) — implement it with T-17 and validate every case.
 6. **Adapt to the starting point.** A single-file monolith needs a full split; a partially layered project needs targeted moves (e.g., extract business logic from routes into controllers, centralize error handling) — do not rewrite what already complies with `mvc-guidelines.md`.
 7. **Stay inside the project directory.** Never touch the skill folder itself (`.claude/`), VCS metadata, lock files, virtualenvs, or `node_modules/`.
 8. Print the phase banners exactly as shown below so the run is easy to follow in the terminal.
@@ -99,7 +101,7 @@ Sanity gates before printing (fix the report if any fails):
 - At least one finding per catalog entry whose signal matched and was confirmed — do not silently drop findings.
 - Every finding has a real `file:line`.
 - Summary counts equal the number of findings per severity.
-- Every Recommendation is concrete enough to be executed and verified. The AP-04 Recommendation lists each guarded operation as `METHOD /path` (+ condition), covering everything required by Global rule 5.
+- Every Recommendation is concrete enough to be executed and verified. The AP-04 Recommendation lists each guarded operation as `METHOD /path` (+ condition + who is allowed), covering everything required by Global rule 5 — including `password`/`email` changes on user update routes (owner or admin).
 
 Then **STOP and ask**, using the `AskUserQuestion` tool when available (otherwise print the line and wait for the user's reply):
 
@@ -147,7 +149,7 @@ Follow `validation-protocol.md` §2–§4:
 1. Boot the refactored app with the original run command — it must start without errors or tracebacks.
 2. Re-run the baseline request set and compare: same status codes and response keys, except for the intentional behavior changes you listed.
 3. Re-scan the code with the catalog's detection signals and confirm the findings are gone (list any accepted residuals with a reason).
-4. **Recommendation conformance check:** re-read every Recommendation in the saved report and confirm, with `file:line` in the refactored code, that each one is implemented in full. For every AP-04 guarded operation, send three requests and record them in an authorization matrix: anonymous → 401 (403 for a static admin token), authenticated non-privileged user → 403 (when the app has users), authorized caller → original success status. Any gap is a ✗. Fix it and re-validate — it is not a follow-up.
+4. **Recommendation conformance check:** re-read every Recommendation in the saved report and confirm, with `file:line` in the refactored code, that each one is implemented in full. For every AP-04 guarded operation, send the matrix requests and record them in an authorization matrix: anonymous → 401 (403 for a static admin token), authenticated non-privileged user → 403 (when the app has users; for owner-or-admin guards, a *different* non-admin user), account owner → original success status (owner-or-admin guards only), admin → original success status. Also replay the takeover chain: as anonymous (or another user), try to change the admin's password/email, then log in with the new password — it must fail. Any gap is a ✗. Fix it and re-validate — it is not a follow-up.
 5. If anything fails, fix and re-validate (up to 3 iterations); if still failing, report it honestly — never claim success that you did not observe.
 6. Stop every server you started and delete database files created by the validation run.
 
@@ -167,7 +169,7 @@ PHASE 3: REFACTORING COMPLETE
 <list, or "None">
 
 ## Authorization matrix
-<METHOD /path (condition) | anonymous | non-privileged | authorized>  (one line per AP-04 guarded operation, or "No AP-04 finding">
+<METHOD /path (condition) | anonymous | non-privileged | owner | admin>  (one line per AP-04 guarded operation, owner "—" when not an owner-or-admin guard, or "No AP-04 finding">
 
 ## Recommended follow-ups
 <improvements beyond the report's Recommendations (e.g., auth on ordinary CRUD that the report did not name), or "None". Never a Recommendation from the report: those are mandatory>

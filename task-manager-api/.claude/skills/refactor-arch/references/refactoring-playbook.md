@@ -597,7 +597,7 @@ def require_admin_token(settings):
 
 ### 17-B Signed login token + role guards (app with users)
 
-**Before** (token is never checked; anyone deletes users, changes roles, deactivates accounts):
+**Before** (token is never checked; anyone deletes users, changes roles, deactivates accounts, or resets another user's password — including the admin's — and logs in as them):
 ```python
 @user_bp.route('/login', methods=['POST'])
 def login():
@@ -612,6 +612,8 @@ def update_user(user_id):
     ...
     if 'role' in data: user.role = data['role']     # privilege escalation
     if 'active' in data: user.active = data['active']
+    if 'password' in data: user.set_password(data['password'])  # account takeover:
+    if 'email' in data: user.email = data['email']               # reset admin's password, log in
 ```
 **After:**
 ```python
@@ -674,11 +676,17 @@ def update_user(user_id):
     return jsonify(user.to_dict()), 200
 
 # controllers/user_controller.py
-PRIVILEGED_FIELDS = ("role", "active")
+PRIVILEGED_FIELDS = ("role", "active")        # admin only
+CREDENTIAL_FIELDS = ("password", "email")     # the account owner or an admin
+
 def update_user(self, user_id, data, caller):
     if any(f in data for f in PRIVILEGED_FIELDS):
         if caller is None: raise UnauthorizedError("Autenticação necessária")
         if caller.role != ROLE_ADMIN: raise ForbiddenError("Apenas administradores podem alterar role/active")
+    if any(f in data for f in CREDENTIAL_FIELDS):
+        if caller is None: raise UnauthorizedError("Autenticação necessária")
+        if caller.id != user_id and caller.role != ROLE_ADMIN:
+            raise ForbiddenError("Apenas o próprio usuário ou um administrador pode alterar senha/e-mail")
     ...
 ```
 **Node/Express equivalent:**
@@ -694,7 +702,12 @@ const requireAuth = (tokens, users) => asyncHandler(async (req, res, next) => {
 const requireRole = (...roles) => (req, res, next) =>
   roles.includes(req.user.role) ? next() : next(new ForbiddenError('Acesso negado'));
 
+const requireSelfOrRole = (...roles) => (req, res, next) =>
+  String(req.user.id) === req.params.id || roles.includes(req.user.role)
+    ? next() : next(new ForbiddenError('Acesso negado'));
+
 router.delete('/users/:id', requireAuth(tokens, users), requireRole('admin'), asyncHandler(...));
+router.put('/users/:id/password', requireAuth(tokens, users), requireSelfOrRole('admin'), asyncHandler(...));
 ```
 
 Checklist for 17-B:
@@ -702,11 +715,14 @@ Checklist for 17-B:
 - The seed must contain at least one admin and one non-admin user, so the guards can be exercised.
 - **Validation matrix**, mandatory for every guarded operation:
 
-  | Operation | anonymous | non-admin token | admin token |
-  |---|---|---|---|
-  | `DELETE /users/<id>` | 401 | 403 | 200 (as baseline) |
-  | `PUT /users/<id>` with `role`/`active` | 401 | 403 | 200 (as baseline) |
-  | `PUT /users/<id>` without privileged fields | 200 (as baseline) | 200 | 200 |
-  | `POST /users` with `role: "admin"` | 401 | 403 | 201 (as baseline) |
+  | Operation | anonymous | other non-admin user | the account owner | admin token |
+  |---|---|---|---|---|
+  | `DELETE /users/<id>` | 401 | 403 | — | 200 (as baseline) |
+  | `PUT /users/<id>` with `role`/`active` | 401 | 403 | 403 (unless admin) | 200 (as baseline) |
+  | `PUT /users/<id>` with `password`/`email` | 401 | 403 | 200 (as baseline) | 200 (as baseline) |
+  | `PUT /users/<id>` with other fields only | 200 (as baseline) | 200 | 200 | 200 |
+  | `POST /users` with `role: "admin"` | 401 | 403 | — | 201 (as baseline) |
+
+- **Takeover replay:** anonymously (and as another non-admin user) send `PUT /users/<admin id>` with a new `password`, then `POST /login` as the admin with that password. The PUT must be 401/403 and the login must still fail with the new password.
 
 - Operations **not** named in the Recommendation (e.g., task/category CRUD) stay public and go to "Recommended follow-ups".
