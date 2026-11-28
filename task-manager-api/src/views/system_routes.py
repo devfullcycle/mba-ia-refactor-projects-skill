@@ -1,9 +1,7 @@
+"""Index and health endpoints."""
 from datetime import datetime
 
 from flask import Blueprint
-
-API_NAME = "Task Manager API"
-API_VERSION = "1.0"
 
 
 def build_system_routes():
@@ -15,6 +13,6 @@ def build_system_routes():
 
     @bp.get("/")
     def index():
-        return {"message": API_NAME, "version": API_VERSION}
+        return {"message": "Task Manager API", "version": "1.0"}
 
     return bp

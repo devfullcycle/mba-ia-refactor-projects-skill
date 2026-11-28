@@ -22,7 +22,7 @@ Este repositório contém:
 |---|---|---|---|---|
 | `code-smells-project` | Python 3 + Flask 3.1.1 + sqlite3 | E-commerce (produtos, usuários, pedidos) | 22 (6 C · 5 H · 6 M · 5 L) | 19/19 |
 | `ecommerce-api-legacy` | Node.js + Express 4 + sqlite3 | LMS com checkout (cursos, matrículas, pagamentos) | 20 (5 C · 6 H · 5 M · 4 L) | 3/3 |
-| `task-manager-api` | Python 3 + Flask 3.0 + Flask-SQLAlchemy | Task Manager (tasks, usuários, categorias) | 19 (4 C · 4 H · 6 M · 5 L) | 22/22 |
+| `task-manager-api` | Python 3 + Flask 3.0 + Flask-SQLAlchemy | Task Manager (tasks, usuários, categorias) | 18 (4 C · 3 H · 6 M · 5 L) | 22/22 |
 
 ---
 
@@ -87,6 +87,33 @@ Feita **antes** de escrever a skill, lendo todo o código-fonte e subindo cada a
 ---
 
 ## B) Construção da Skill
+
+### O fluxo
+
+```mermaid
+graph LR
+  A["Fase 1: análise"] --> B["Fase 2: auditoria"]
+  B --> G{"Proceed? [y/n]"}
+  G -->|n ou --audit-only| X[Fim: só o relatório]
+  G -->|y| S["Fase 3: baseline"]
+  S --> R["Fase 3: refatoração MVC"]
+  R --> V[Validação]
+  V -->|falhou, até 3 ciclos| R
+  V -->|passou| D[Resumo da Fase 3]
+  RP[("audit-report.md")] -.-> R
+  RP -.-> V
+```
+
+| Etapa | Lê | Escreve |
+| --- | --- | --- |
+| Fase 1: análise | `project-analysis.md`, código do projeto | Nada (imprime o resumo da stack) |
+| Fase 2: auditoria | `anti-patterns-catalog.md`, `audit-report-template.md`, código | `audit-report.md` (ou `--report <path>`), único arquivo antes do "y" |
+| Confirmação | Resposta do usuário | Nada; `n` ou `--audit-only` encerra |
+| Fase 3: baseline | `validation-protocol.md`, app original rodando | Status e chaves de cada endpoint |
+| Fase 3: refatoração | Relatório, `mvc-guidelines.md`, `refactoring-playbook.md` | Código em camadas MVC |
+| Validação | Baseline, app refatorada, relatório | Boot, comparação de endpoints, matriz de autorização, re-scan |
+
+O relatório confirmado é a ordem de serviço da Fase 3: toda Recommendation é implementada por inteiro, e a validação confere cada uma (regra global 4 do `SKILL.md`). A baseline é capturada antes de qualquer mudança, então "a aplicação continua funcionando" vira uma comparação entre o antes e o depois.
 
 ### Estrutura
 
@@ -168,11 +195,12 @@ O **playbook** tem 17 transformações (T-01 a T-17), todas com código **antes/
 |---|---|---|
 | 1 | **Ordenação dentro da mesma severidade.** O template pedia "por arquivo e linha", mas o modelo ordenou por impacto, o que é mais útil para quem lê | O template passou a pedir "maior impacto primeiro; empate por arquivo/linha" |
 | 2 | **Auditoria e refatoração desalinhadas (feedback da correção).** Na 1ª entrega, o AP-04 do P3 recomendava guarda para criação de admin, troca de role e `DELETE` de usuário, mas a Fase 3 só bloqueou a autoatribuição de admin. `DELETE /users/<id>` e a troca de `active` ficaram sem guarda. A causa era uma regra minha (commit `d890df6`) que limitava guards a rotas `/admin/*` para não quebrar o contrato, ou seja, a Fase 3 estreitava a recomendação em silêncio | Correção no commit `3ada4b7`: **(a)** regra global 4: o relatório é a ordem de serviço da Fase 3, e toda Recommendation é implementada por inteiro; decisões de escopo acontecem na Fase 2, nunca na 3. **(b)** regra global 5: a Recommendation do AP-04 lista cada operação guardada como `METHOD /path` + condição, e criação de conta privilegiada, troca de `role`/`active` e exclusão de usuário estão sempre no escopo. **(c)** T-17 reescrito com 17-A (token estático para `/admin/*`) e 17-B (token assinado no login + `require_auth`/`require_role` + guarda condicional por campo). **(d)** Tabela de conformidade no plano, checagem de conformidade na validação e **matriz de autorização** obrigatória (anônimo → 401, comum → 403, admin → sucesso). Depois disso, **rodei a skill de novo no `task-manager-api` a partir do código legado** (commit `6d1ce62`). P1 e P2 já estavam conformes: as guardas implementadas cobrem exatamente o que seus relatórios recomendam |
-| 3 | **Falso positivo.** Na auditoria do P3, a skill marcou AP-10 (FK órfã ao apagar categoria) | O baseline da Fase 3 mostrou que o backref do SQLAlchemy já zera `category_id`. Na 1ª execução, a skill retirou o achado. Na 2ª, pela regra 4, manteve o achado com uma **nota de correção datada** (a severidade efetiva cai para LOW) e implementou a Recommendation mesmo assim (anulação explícita da FK na mesma transação). Assim, nenhuma recomendação fica sem execução |
-| 4 | **Servidor zumbi na validação.** O reloader do Flask em `debug=True` deixa um processo filho segurando a porta depois do `pkill` | O `validation-protocol.md` manda encerrar **por porta** (`lsof -tiTCP:<port>`), nunca por nome de processo |
-| 5 | **Execução headless.** Rodei a skill de verdade via `claude -p` (ver seção D). Uma regra `Write(path)` em `--allowedTools` não cobre escrita de arquivo (precisa ser `Edit(path)`) | Uso de `--permission-mode acceptEdits` + allowlist de comandos Bash; a confirmação da Fase 2 é dada com `claude -p -c "y"` |
-| 6 | **Skill atualizada no meio de uma sessão.** A sessão continuada do P3 tinha carregado o `SKILL.md` antigo | A resposta de confirmação pediu para reler o `SKILL.md` antes da Fase 3 |
-| 7 | **Bugs que eu não tinha visto.** A skill achou um crash que escapou da minha análise manual: no P2, `"card": 4111` (número em vez de string) derruba o processo inteiro (`cc.startsWith is not a function`) | Classificado como AP-14 elevado para HIGH, e corrigido na Fase 3 (agora retorna 400) |
+| 3 | **Account takeover pela troca de senha (2º feedback da correção).** Na 2ª entrega, a regra 5 cobria `role`, `active`, criação de admin e `DELETE`, mas não credenciais. O `PUT /users/<id>` com `password` ficou público: qualquer pessoa trocava a senha do admin `joao@email.com`, fazia login e recebia um token de admin. Ou seja, a mesma escalada de privilégio por outro caminho | **(a)** Regra global 5: troca de `password`/`email` (ou outro identificador de login) de uma conta existente entra sempre no escopo do AP-04, com guarda *owner-or-admin* (só o próprio usuário ou um admin). Antes de escrever a Recommendation, a skill percorre todo campo gravável das rotas de usuário. **(b)** AP-04 no catálogo ganhou o sinal "account takeover" e a linha `PUT /users/<id>` com `password`/`email` → dono ou admin no exemplo obrigatório. **(c)** T-17 ganhou `CREDENTIAL_FIELDS` no controller (Python) e `requireSelfOrRole` (Node), e a matriz passou a ter as colunas "outro usuário" e "o próprio usuário". **(d)** A validação reproduz a cadeia de takeover (trocar a senha do admin e tentar logar com ela) e exige que falhe. Rodei a skill de novo no `task-manager-api` a partir do código legado. P1 e P2 não têm rota que altere senha/e-mail de outra conta, então continuam conformes |
+| 4 | **Falso positivo.** Na auditoria do P3, a skill marcou AP-10 (FK órfã ao apagar categoria) | O baseline da Fase 3 mostrou que o backref do SQLAlchemy já zera `category_id`. Na 1ª execução, a skill retirou o achado. Na 2ª, pela regra 4, manteve o achado com uma **nota de correção datada** (a severidade efetiva cai para LOW) e implementou a Recommendation mesmo assim (anulação explícita da FK na mesma transação). Na 3ª, a skill confirmou o comportamento ainda na Fase 2 e listou o AP-10 como "avaliado e não aplicável", com o motivo. É o lugar certo para essa decisão: a regra 4 manda decidir escopo na Fase 2 |
+| 5 | **Servidor zumbi na validação.** O reloader do Flask em `debug=True` deixa um processo filho segurando a porta depois do `pkill` | O `validation-protocol.md` manda encerrar **por porta** (`lsof -tiTCP:<port>`), nunca por nome de processo |
+| 6 | **Execução headless.** Rodei a skill de verdade via `claude -p` (ver seção D). Uma regra `Write(path)` em `--allowedTools` não cobre escrita de arquivo (precisa ser `Edit(path)`) | Uso de `--permission-mode acceptEdits` + allowlist de comandos Bash; a confirmação da Fase 2 é dada com `claude -p -c "y"` |
+| 7 | **Skill atualizada no meio de uma sessão.** A sessão continuada do P3 tinha carregado o `SKILL.md` antigo | A resposta de confirmação pediu para reler o `SKILL.md` antes da Fase 3 |
+| 8 | **Bugs que eu não tinha visto.** A skill achou um crash que escapou da minha análise manual: no P2, `"card": 4111` (número em vez de string) derruba o processo inteiro (`cc.startsWith is not a function`) | Classificado como AP-14 elevado para HIGH, e corrigido na Fase 3 (agora retorna 400) |
 
 ---
 
@@ -184,7 +212,7 @@ O **playbook** tem 17 transformações (T-01 a T-17), todas com código **antes/
 |---|---|---|---|---|---|---|---|
 | 1 — code-smells-project | 6 | 5 | 6 | 5 | **22** | nenhuma (verificado com `python -W default`) | [audit-project-1.md](reports/audit-project-1.md) |
 | 2 — ecommerce-api-legacy | 5 | 6 | 5 | 4 | **20** | driver sqlite3 só com callbacks; `.verbose()` em produção | [audit-project-2.md](reports/audit-project-2.md) |
-| 3 — task-manager-api | 4 | 4 | 6 | 5 | **19** | `Query.get()` (16×), `datetime.utcnow()` (20+×) | [audit-project-3.md](reports/audit-project-3.md) |
+| 3 — task-manager-api | 4 | 3 | 6 | 5 | **18** | `Query.get()` (16×), `datetime.utcnow()` (20+×) | [audit-project-3.md](reports/audit-project-3.md) |
 
 **Cobertura da análise manual**: todos os problemas da seção A aparecem nos relatórios da skill (14/14 no P1, 12/12 no P2, 13/13 no P3), bem acima do mínimo de 5 por projeto. A skill ainda achou problemas extras, como o crash do P2 com cartão numérico, o oversell por quantidade negativa no P1 e a ausência de devolução de estoque no cancelamento.
 
@@ -230,12 +258,12 @@ database.py                   seed.py                       # usa create_app()
 seed.py                       src/
 models/  task · user · category ├── app.py                  # create_app()
 routes/  task · user · report   ├── config/settings.py
-         (fat routes)           ├── models/      database (utcnow) · task · user · category  (+ repositórios)
+         (fat routes)           ├── models/      database (utcnow) · constants · task · user · category
 services/ notification (não     ├── controllers/ errors · validators · metrics · task · user · category · report   ← camada que faltava
           usado, senha SMTP)    ├── views/       presenters · task · user · category · report · system
 utils/   helpers (meio morto)   ├── services/    token_service (itsdangerous) · notification_service
                                 └── middlewares/ error_handler (JSON) · auth (Bearer)
-15 arquivos · ~1.160 linhas   32 arquivos · ~1.300 linhas em src/
+15 arquivos · ~1.160 linhas   31 arquivos · ~1.350 linhas em src/
 ```
 
 ### Validação independente (fora da skill)
@@ -246,7 +274,7 @@ Além da validação que a própria skill faz, rodei meu próprio smoke test HTT
 |---|---|---|---|---|---|
 | 1 | 39 | 33 | 3: bypass de login por SQLi 200→**401**; `D'Agua` 500→**201**; `/admin/query` anônimo 200→**403** | 3 | **0** (antes: 1) |
 | 2 | 13 | 10 | relatório/delete exigem `X-Admin-Token` | 3 (incl. crash do cartão numérico → 400) | **0** |
-| 3 | 60 | 48 | 12: matriz de autorização (criação de admin, troca de `role`/`active` e `DELETE` de usuário → **401** anônimo / **403** usuário comum, sucesso só para admin); três 500/415 → 400 | — | **0** (antes: 2) |
+| 3 | 58 | 41 | 17: matriz de autorização (criação de admin, troca de `role`/`active` e `DELETE` de usuário → só admin; troca de `password`/`email` → só o dono ou admin; **401** anônimo / **403** sem permissão) e a cadeia de account takeover do admin bloqueada | — | **0** |
 
 Trecho do log de boot do projeto 3 refatorado, rodando com `-W default` e **sem nenhum `DeprecationWarning`/`LegacyAPIWarning`**, que antes apareciam:
 
@@ -285,7 +313,7 @@ INFO Usuário 1 removido com matrículas e pagamentos
 | Relatório segue o template | ✅ | ✅ | ✅ |
 | Cada finding tem arquivo e linhas exatos | ✅ | ✅ | ✅ |
 | Ordenado CRITICAL → LOW | ✅ | ✅ | ✅ |
-| Mínimo de 5 findings | ✅ 22 | ✅ 20 | ✅ 19 |
+| Mínimo de 5 findings | ✅ 22 | ✅ 20 | ✅ 18 |
 | APIs deprecated (se aplicável) | ✅ verificado; nenhuma | ✅ 2 itens | ✅ 2 APIs, todas as ocorrências |
 | Pausa e pede confirmação antes da Fase 3 | ✅ | ✅ | ✅ |
 | **Fase 3 — Refatoração** | | | |
@@ -305,7 +333,7 @@ INFO Usuário 1 removido com matrículas e pagamentos
 
 - **Projeto 1 (Flask, pseudo-MVC):** a skill não se deixou enganar pelos nomes `models.py`/`controllers.py`. Classificou o projeto como *Pseudo-layered* porque `controllers.py` eram views Flask e `models.py` continha regras. Fez a divisão completa em 34 arquivos e corrigiu a injeção sem mudar nenhum envelope de resposta.
 - **Projeto 2 (Express, monolito):** aplicou os itens específicos de Node: AP-11 (callback hell → `async/await` sobre um wrapper promisificado) e transações serializadas, já que o sqlite3 compartilha uma única conexão. Manteve o formato de erro em **texto puro** do legado, conforme a regra "preserve o envelope existente", em vez de impor JSON.
-- **Projeto 3 (Flask, parcialmente organizado):** reconheceu a organização existente (*Partially layered*) e criou o que faltava: a **camada de controllers**, config, middlewares e composition root. Também consolidou `utils/helpers.py` (meio morto) em `validators.py`. Foi o projeto em que a skill mais precisou ponderar segurança × contrato. Depois do feedback da correção, foi re-executado do zero com a regra de que a Recommendation é vinculante. A matriz de autorização ficou 5/5 operações guardadas (401/403/sucesso), e o CRUD de tasks/categorias e as atualizações de usuário sem campos privilegiados continuaram públicos, como o relatório especifica.
+- **Projeto 3 (Flask, parcialmente organizado):** reconheceu a organização existente (*Partially layered*) e criou o que faltava: a **camada de controllers**, config, middlewares e composition root. Também consolidou `utils/helpers.py` (meio morto) em `validators.py`. Foi o projeto em que a skill mais precisou ponderar segurança × contrato. Depois de cada feedback da correção, foi re-executado do zero a partir do código legado. Na 3ª execução, a matriz de autorização cobre 4 operações guardadas (criação de admin/manager, `role`/`active`, `password`/`email` só pelo dono ou admin, `DELETE`), e a tentativa de sequestrar a conta do admin falha. O CRUD de tasks/categorias e a troca só de `name` continuaram públicos, como o relatório especifica.
 - **Ponto comum:** nos 3 casos a skill subiu o app original para tirar um baseline antes de tocar no código, e se recusou a declarar ✓ sem ter observado o resultado.
 
 ---
@@ -376,6 +404,7 @@ curl -s localhost:5000/reports/summary | head -c 200
 TOKEN=$(curl -s -X POST localhost:5000/login -H 'Content-Type: application/json' -d '{"email":"joao@email.com","password":"1234"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 curl -s -o /dev/null -w '%{http_code}\n' -X DELETE localhost:5000/users/3                                   # → 401 (sem token)
 curl -s -o /dev/null -w '%{http_code}\n' -X DELETE localhost:5000/users/3 -H "Authorization: Bearer $TOKEN"  # → 200 (admin)
+curl -s -o /dev/null -w '%{http_code}\n' -X PUT localhost:5000/users/1 -H 'Content-Type: application/json' -d '{"password":"hacked"}'  # → 401 (ninguém troca a senha do admin)
 ```
 
 Variáveis de ambiente de cada projeto (todas opcionais em desenvolvimento) estão documentadas no `.env.example` e no `README.md` de cada pasta. As mais importantes são `SECRET_KEY`, `ADMIN_TOKEN`, `PORT`/`HOST`, `FLASK_DEBUG` e `PAYMENT_GATEWAY_KEY`.
@@ -384,4 +413,4 @@ O que conferir:
 1. o servidor sobe sem traceback;
 2. as rotas listadas na seção *Endpoint contract* de cada relatório respondem com os mesmos status do original (ver [`reports/validation/`](reports/validation/));
 3. os probes de segurança agora falham: injeção → 401/0 resultados, admin sem token → 403, nenhum campo de senha nas respostas;
-4. no P3, cada operação guardada segue a matriz anônimo → 401 / usuário comum → 403 / admin → sucesso (ver [`reports/validation/project-3.md`](reports/validation/project-3.md)).
+4. no P3, cada operação guardada segue a matriz anônimo → 401 / sem permissão → 403 / admin (e o dono, na troca de senha/e-mail) → sucesso (ver [`reports/validation/project-3.md`](reports/validation/project-3.md)).

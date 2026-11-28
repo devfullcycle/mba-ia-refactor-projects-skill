@@ -1,3 +1,6 @@
+"""Domain errors raised by controllers; translated to HTTP by middlewares/error_handler.py."""
+
+
 class AppError(Exception):
     status_code = 400
 

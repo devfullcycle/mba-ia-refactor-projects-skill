@@ -1,3 +1,4 @@
+"""Report endpoints (HTTP layer only)."""
 from flask import Blueprint, jsonify
 
 

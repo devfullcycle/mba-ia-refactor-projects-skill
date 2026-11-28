@@ -1,6 +1,6 @@
-from src.models.database import db, utcnow
-
-DEFAULT_COLOR = "#000000"
+"""Category entity and repository."""
+from src.models.constants import DEFAULT_COLOR
+from src.models.database import BaseRepository, db, utcnow
 
 
 class Category(db.Model):
@@ -22,24 +22,11 @@ class Category(db.Model):
         }
 
 
-class CategoryRepository:
-    def __init__(self, database):
-        self.db = database
-
-    def get(self, category_id):
-        return self.db.session.get(Category, category_id)
+class CategoryRepository(BaseRepository):
+    model = Category
 
     def list_all(self):
-        return self.db.session.execute(self.db.select(Category).order_by(Category.id)).scalars().all()
+        return self.session.execute(db.select(Category).order_by(Category.id)).scalars().all()
 
     def count(self):
-        return self.db.session.execute(self.db.select(self.db.func.count(Category.id))).scalar_one()
-
-    def add(self, category):
-        self.db.session.add(category)
-
-    def delete(self, category):
-        self.db.session.delete(category)
-
-    def commit(self):
-        self.db.session.commit()
+        return self.session.execute(db.select(db.func.count(Category.id))).scalar_one()

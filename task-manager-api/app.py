@@ -1,10 +1,8 @@
-"""Entry point: `python app.py`. Host, port and debug come from the environment (see .env.example)."""
+"""Entry point — `python app.py` (also exposes `app` for WSGI servers)."""
 from src.app import create_app
-from src.models.database import db
+from src.models.database import db  # noqa: F401  (kept for scripts doing `from app import app, db`)
 
 app = create_app()
-
-__all__ = ["app", "db"]
 
 if __name__ == "__main__":
     settings = app.extensions["settings"]
