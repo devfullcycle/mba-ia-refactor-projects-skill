@@ -10,6 +10,8 @@ Este repositório contém:
 - as **evidências de validação** (boot + comparação de endpoints antes × depois) em [`reports/validation/`](reports/validation/).
 
 > O enunciado original está no repositório base: <https://github.com/devfullcycle/mba-ia-refactor-projects-skill>. O código legado intacto pode ser consultado no commit `6d1ce62`.
+>
+> Link do exercício na plataforma Full Cycle: <https://plataforma.fullcycle.com.br/courses/a091b0fe-a5c6-4287-a3d3-1ec61defcfd3/413/224/266/conteudos?projeto=70&fase=295>
 
 ## Sumário
 
